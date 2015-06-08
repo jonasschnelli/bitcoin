@@ -16,6 +16,7 @@
 #include "utilstrencodings.h"
 #include "validationinterface.h"
 #include "wallet/crypter.h"
+#include "wallet/hdkeystore.h"
 #include "wallet/wallet_ismine.h"
 #include "wallet/walletdb.h"
 
@@ -447,7 +448,7 @@ public:
  * A CWallet is an extension of a keystore, which also maintains a set of transactions and balances,
  * and provides the ability to create new transactions.
  */
-class CWallet : public CCryptoKeyStore, public CValidationInterface
+class CWallet : public CHDKeyStore, public CValidationInterface
 {
 private:
     bool SelectCoins(const CAmount& nTargetValue, std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet, const CCoinControl *coinControl = NULL) const;
@@ -745,17 +746,12 @@ public:
     /** Set whether this wallet broadcasts transactions. */
     void SetBroadcastTransactions(bool broadcast) { fBroadcastTransactions = broadcast; }
 
-
-    std::string HDchainPath;
-    CExtPubKey HDexternalPubKey;
-    CExtPubKey HDinternalPubKey;
-    unsigned char HDmasterSeed[32];
-    CKeyID HDmasterKeyID;
-    CKeyingMaterial vMasterSeed;
+    std::map<uint256, CHDChain> hdChains;
+    uint256 HDactiveChain;
 
     bool HDSetChainPath(const std::string& chainPath, bool generateMaster, CKeyingMaterial& vSeed, const CExtPubKey& pubMasterKey, bool overwrite = false);
-    bool HDGetChildPubKeyAtIndex(CPubKey &pubKeyOut, unsigned int index, bool internal = false);
-    bool HDGetNextChildPubKey(CPubKey &pubKeyOut, bool internal = false);
+    bool HDGetChildPubKeyAtIndex(const HDChainID& chainID, CPubKey &pubKeyOut, unsigned int nIndex, bool internal = false);
+    bool HDGetNextChildPubKey(const HDChainID& chainIDIn, CPubKey &pubKeyOut, bool internal = false);
     bool HDDeriveKeyFromKeyID(CKey& keyOut, CKeyID keyId) const;
     bool GetKey(const CKeyID &address, CKey &keyOut) const;
     std::string HDGetChainPath();

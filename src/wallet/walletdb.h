@@ -48,6 +48,7 @@ public:
 
     unsigned int nChild;
     CKeyID parentKeyID;
+    uint256 chainHash;
 
     CKeyMetadata()
     {
@@ -70,6 +71,7 @@ public:
         {
             READWRITE(nChild);
             READWRITE(parentKeyID);
+            READWRITE(chainHash);
         }
 
     }
@@ -109,14 +111,17 @@ public:
     bool WriteWatchOnly(const CScript &script);
     bool EraseWatchOnly(const CScript &script);
 
-    bool WriteHDMasterSeed(const CKeyingMaterial& masterSeed);
-    bool EraseHDMasterSeed();
+    bool WriteHDMasterSeed(const uint256& hash, const CKeyingMaterial& masterSeed);
+    bool WriteHDCryptedMasterSeed(const uint256& hash, const std::vector<unsigned char>& vchCryptedSecret);
+    bool EraseHDMasterSeed(const uint256& hash);
 
-    bool WriteHDExternalPubKey(const CExtPubKey &externalPubKey);
-    bool WriteHDInternalPubKey(const CExtPubKey &internalPubKey);
+    bool WriteHDExternalPubKey(const uint256& hash, const CExtPubKey &externalPubKey);
+    bool WriteHDInternalPubKey(const uint256& hash, const CExtPubKey &internalPubKey);
 
-    bool WriteHDChainPath(const std::string &chainPath);
+    bool WriteHDChainPath(const uint256& hash, const std::string &chainPath);
     bool WriteHDPubKey(const CPubKey& vchPubKey, const CKeyMetadata& keyMeta);
+
+    bool WriteHDAchiveChain(const uint256& hash);
 
     bool WriteBestBlock(const CBlockLocator& locator);
     bool ReadBestBlock(CBlockLocator& locator);
