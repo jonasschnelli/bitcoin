@@ -2812,7 +2812,7 @@ bool CWallet::HDSetChainPath(const std::string& chainPathIn, bool generateMaster
     boost::to_lower(newChainPath);
     boost::erase_all(newChainPath, " ");
     boost::replace_all(newChainPath, "h", "'"); //support h instead of ' to allow easy JSON input over cmd line
-    if (newChainPath.size() > 0 && newChainPath.back() == '/')
+    if (newChainPath.size() > 0 && *newChainPath.rbegin() == '/')
         newChainPath.resize(newChainPath.size() - 1);
 
     std::vector<std::string> pathFragments;
@@ -2828,7 +2828,7 @@ bool CWallet::HDSetChainPath(const std::string& chainPathIn, bool generateMaster
     BOOST_FOREACH(std::string fragment, pathFragments)
     {
         bool harden = false;
-        if (fragment.back() == '\'')
+        if (*fragment.rbegin() == '\'')
         {
             harden = true;
             fragment = fragment.substr(0,fragment.size()-1);
