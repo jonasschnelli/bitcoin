@@ -528,7 +528,6 @@ UniValue setban(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_MISC_ERROR, "Error: Unban failed");
     }
 
-    uiInterface.BannedListChanged();
     return NullUniValue;
 }
 
@@ -570,7 +569,6 @@ UniValue clearbanned(const UniValue& params, bool fHelp)
                             );
 
     CNode::ClearBanned();
-    uiInterface.BannedListChanged();
 
     return NullUniValue;
 }
