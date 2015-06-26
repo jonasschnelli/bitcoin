@@ -314,24 +314,20 @@ void RPCConsole::setClientModel(ClientModel *model)
         ui->peerWidget->setColumnWidth(PeerTableModel::Ping, PING_COLUMN_WIDTH);
         ui->peerWidget->horizontalHeader()->setStretchLastSection(true);
 
-        // create context menu actions
-        QAction* disconnectAction   = new QAction(tr("&Disconnect Node"), this);
-        QAction* banAction1h        = new QAction(tr("&Ban Node for") + " " + tr("&1 hour"), this);
-        QAction* banAction24h       = new QAction(tr("&Ban Node for") + " " + tr("&24 hours"), this);
-        QAction* banAction7d        = new QAction(tr("&Ban Node for") + " " + tr("&7 days"), this);
-        QAction* banAction365d      = new QAction(tr("&Ban Node for") + " " + tr("&1 year"), this);
+        // create peer table context menu actions
+        QAction* disconnectAction = new QAction(tr("&Disconnect Node"), this);
+        QAction* banAction1h      = new QAction(tr("&Ban Node for") + " " + tr("&1 hour"), this);
+        QAction* banAction24h     = new QAction(tr("&Ban Node for") + " " + tr("&24 hours"), this);
+        QAction* banAction7d      = new QAction(tr("&Ban Node for") + " " + tr("&7 days"), this);
+        QAction* banAction365d    = new QAction(tr("&Ban Node for") + " " + tr("&1 year"), this);
 
-        // create context menu
+        // create peer table context menu
         peersTableContextMenu = new QMenu();
         peersTableContextMenu->addAction(disconnectAction);
         peersTableContextMenu->addAction(banAction1h);
         peersTableContextMenu->addAction(banAction24h);
         peersTableContextMenu->addAction(banAction7d);
         peersTableContextMenu->addAction(banAction365d);
-
-        // context menu signals
-        connect(ui->peerWidget, SIGNAL(customContextMenuRequested(const QPoint&)), this, SLOT(showPeersTableContextMenu(const QPoint&)));
-        connect(disconnectAction, SIGNAL(triggered()), this, SLOT(disconnectSelectedNode()));
 
         // Add a signal mapping to allow dynamic context menu arguments.
         // We need to use int (instead of int64_t), because signal mapper only supports
@@ -347,20 +343,25 @@ void RPCConsole::setClientModel(ClientModel *model)
         connect(banAction365d, SIGNAL(triggered()), signalMapper, SLOT(map()));
         connect(signalMapper, SIGNAL(mapped(int)), this, SLOT(banSelectedNode(int)));
 
-        // connect the peerWidget selection model to our peerSelected() handler
+        // peer table context menu signals
+        connect(ui->peerWidget, SIGNAL(customContextMenuRequested(const QPoint&)), this, SLOT(showPeersTableContextMenu(const QPoint&)));
+        connect(disconnectAction, SIGNAL(triggered()), this, SLOT(disconnectSelectedNode()));
+
+        // peer table signal handling - update peer details when selecting new node
         connect(ui->peerWidget->selectionModel(), SIGNAL(selectionChanged(const QItemSelection &, const QItemSelection &)),
-             this, SLOT(peerSelected(const QItemSelection &, const QItemSelection &)));
+            this, SLOT(peerSelected(const QItemSelection &, const QItemSelection &)));
+        // peer table signal handling - update peer details when new nodes are added to the model
         connect(model->getPeerTableModel(), SIGNAL(layoutChanged()), this, SLOT(peerLayoutChanged()));
 
         // set up ban table
         ui->banlistWidget->setModel(model->getBanTableModel());
         ui->banlistWidget->verticalHeader()->hide();
         ui->banlistWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
-        ui->banlistWidget->setColumnWidth(BanTableModel::Address, BANSUBNET_COLUMN_WIDTH);
-        ui->banlistWidget->setColumnWidth(BanTableModel::Bantime, BANTIME_COLUMN_WIDTH);
         ui->banlistWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
         ui->banlistWidget->setSelectionMode(QAbstractItemView::SingleSelection);
         ui->banlistWidget->setContextMenuPolicy(Qt::CustomContextMenu);
+        ui->banlistWidget->setColumnWidth(BanTableModel::Address, BANSUBNET_COLUMN_WIDTH);
+        ui->banlistWidget->setColumnWidth(BanTableModel::Bantime, BANTIME_COLUMN_WIDTH);
         ui->banlistWidget->horizontalHeader()->setStretchLastSection(true);
 
         // create ban table context menu action
@@ -588,7 +589,7 @@ void RPCConsole::peerSelected(const QItemSelection &selected, const QItemSelecti
 {
     Q_UNUSED(deselected);
 
-    if (!clientModel || selected.indexes().isEmpty())
+    if (!clientModel || !clientModel->getPeerTableModel() || selected.indexes().isEmpty())
         return;
 
     const CNodeCombinedStats *stats = clientModel->getPeerTableModel()->getNodeStats(selected.indexes().first().row());
@@ -598,7 +599,7 @@ void RPCConsole::peerSelected(const QItemSelection &selected, const QItemSelecti
 
 void RPCConsole::peerLayoutChanged()
 {
-    if (!clientModel)
+    if (!clientModel || !clientModel->getPeerTableModel())
         return;
 
     const CNodeCombinedStats *stats = NULL;
@@ -707,7 +708,7 @@ void RPCConsole::showEvent(QShowEvent *event)
 {
     QWidget::showEvent(event);
 
-    if (!clientModel)
+    if (!clientModel || !clientModel->getPeerTableModel())
         return;
 
     // start PeerTableModel auto refresh
@@ -718,7 +719,7 @@ void RPCConsole::hideEvent(QHideEvent *event)
 {
     QWidget::hideEvent(event);
 
-    if (!clientModel)
+    if (!clientModel || !clientModel->getPeerTableModel())
         return;
 
     // stop PeerTableModel auto refresh
