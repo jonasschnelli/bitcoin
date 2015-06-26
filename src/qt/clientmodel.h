@@ -90,7 +90,6 @@ signals:
     void numBlocksChanged(int count, const QDateTime& blockDate);
     void alertsChanged(const QString &warnings);
     void bytesChanged(quint64 totalBytesIn, quint64 totalBytesOut);
-    void banListChanged();
 
     //! Fired when a message should be reported to the user
     void message(const QString &title, const QString &message, unsigned int style);
@@ -102,7 +101,6 @@ public slots:
     void updateTimer();
     void updateNumConnections(int numConnections);
     void updateAlert(const QString &hash, int status);
-    void updateBanlist();
 };
 
 #endif // BITCOIN_QT_CLIENTMODEL_H
