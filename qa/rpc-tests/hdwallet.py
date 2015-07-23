@@ -57,6 +57,16 @@ class WalletTest (BitcoinTestFramework):
         self.nodes[0].generate(100)
         self.sync_all()
 
+        self.nodes[2].hdaddchain('default', 'tprv8ZgxMBicQKsPePWBxbX4F1arnkRyTvM3kVWgGJV2oNJ3abnwgWRhW1q9ruAaW2Y5Ffgak1PRemKd9LgJCrV2vWKeixAvrAAUtyktAMLv4YE');
+        adr = self.nodes[2].hdgetaddress()
+        assert_equal(adr['address'], "msXnguyqxBFdd7Y2zrsZTU3pKL6fpPCpzX");
+        assert_equal(adr['chainpath'], "m/44'/0'/0'/0/0");
+        
+        self.nodes[2].hdaddchain("m/101/10'/c", 'tprv8ZgxMBicQKsPfJt4aGm5uB6STj5nCjLCH24rxgnpfusp38cHmcFNoTUan37ndbHCYcQMj544jjNJekSZcET4NoaVGA8s6atuzUHPQBG6mAp');
+        adr = self.nodes[2].hdgetaddress()
+        assert_equal(adr['address'], "mnvAsVFCiUXh9Sm86JV4EVLfwP9TRz6Yqf");
+        assert_equal(adr['chainpath'], "m/101/10'/0/0");
+
         self.nodes[2].hdaddchain('default', 'f81a7a4efdc29e54dcc739df87315a756038d0b68fbc4880ffbbbef222152e6a')
         adr = self.nodes[2].hdgetaddress()
         assert_equal(adr['address'], "n1hBoYyGjqkbC8kdKNAejuaNR19eoYCSoi");
