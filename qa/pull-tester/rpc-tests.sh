@@ -17,6 +17,7 @@ fi
 
 testScripts=(
     'wallet.py'
+    'hdwallet.py'
     'listtransactions.py'
     'mempool_resurrect_test.py'
     'txn_doublespend.py --mineblock'
