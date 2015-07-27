@@ -2510,27 +2510,21 @@ UniValue hdaddchain(const UniValue& params, bool fHelp)
 
     if (params.size() > 1 && params[1].isStr())
     {
-        if (params[1].get_str().size() > 32*2) //hex
+        if (IsHex(params[1].get_str()))
         {
-            //assume it's a base58check encoded key
-            xprivOut = params[1].get_str();
+            std::vector<unsigned char> seed = ParseHex(params[1].get_str());
+            int seedLength = sizeof(seed);
+
+            memcpy(&vSeed[0], &seed[0], seedLength);
+            memory_cleanse(&seed[0], seedLength);
+            fGenerateMasterSeed = false;
         }
         else
         {
-            if (!IsHex(params[1].get_str()))
-                throw runtime_error("HD master seed must be encoded in hex");
-
-            std::vector<unsigned char> seed = ParseHex(params[1].get_str());
-            if (seed.size() != bip32MasterSeedLength)
-                throw runtime_error("HD master seed must be "+itostr(bip32MasterSeedLength*8)+"bit");
-
-            memcpy(&vSeed[0], &seed[0], bip32MasterSeedLength);
-            memory_cleanse(&seed[0], bip32MasterSeedLength);
-            fGenerateMasterSeed = false;
+            // assume it's a base58check encoded key, which will be deserialized/verified later. 
+            xprivOut = params[1].get_str();
         }
     }
-
-
 
     pwalletMain->HDAddHDChain(chainPath, fGenerateMasterSeed, vSeed, chainId, xprivOut, xpubOut);
     if (fGenerateMasterSeed)
