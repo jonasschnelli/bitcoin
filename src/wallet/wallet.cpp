@@ -2803,7 +2803,7 @@ bool CWallet::HDAddHDChain(const std::string& chainPathIn, bool generateMaster, 
         throw std::runtime_error("CWallet::HDAddHDChain(): Non masterkey chainpaths are not allowed.");
 
     if (chainPathIn.find_first_of("c", 1) == std::string::npos)
-        throw std::runtime_error("CWallet::HDAddHDChain(): 'c' (internal/external chain selection) is requires in the given chainpath.");
+        throw std::runtime_error("CWallet::HDAddHDChain(): 'c' (internal/external chain selection) is required in the given chainpath.");
 
     if (chainPathIn.find_first_not_of("0123456789'/mch", 0) != std::string::npos)
         throw std::runtime_error("CWallet::HDAddHDChain(): Invalid chainpath.");
