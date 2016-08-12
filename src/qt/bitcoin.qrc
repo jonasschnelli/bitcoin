@@ -53,6 +53,11 @@
         <file alias="hd_enabled">res/icons/hd_enabled.png</file>
         <file alias="hd_disabled">res/icons/hd_disabled.png</file>
         <file alias="network_disabled">res/icons/network_disabled.png</file>
+        <file alias="button_on_blue">res/icons/button_on_blue.png</file>
+        <file alias="button_on_red">res/icons/button_on_red.png</file>
+        <file alias="button_on_green">res/icons/button_on_green.png</file>
+        <file alias="button_off">res/icons/button_off.png</file>
+        <file alias="chart">res/icons/chart.png</file>
     </qresource>
     <qresource prefix="/movies">
         <file alias="spinner-000">res/movies/spinner-000.png</file>

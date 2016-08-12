@@ -225,6 +225,8 @@ namespace GUIUtil
         void mouseReleaseEvent(QMouseEvent *event);
     };
 
+    /* Format bytes into GB/MB/KB */
+    QString formatBytes(size_t nBytes);
 #if defined(Q_OS_MAC) && QT_VERSION >= 0x050000
     // workaround for Qt OSX Bug:
     // https://bugreports.qt-project.org/browse/QTBUG-15631

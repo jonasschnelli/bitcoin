@@ -148,6 +148,9 @@ void OptionsModel::Init(bool resetSettings)
     if (!gArgs.SoftSetArg("-lang", settings.value("language").toString().toStdString()))
         addOverriddenOption("-lang");
 
+    // Enable statistics by default
+    SoftSetBoolArg("-statsenable", true);
+
     language = settings.value("language").toString();
 }
 
