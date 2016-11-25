@@ -26,8 +26,6 @@ static const int GRAPH_PADDING_TOP_LABEL = 150;
 static const int GRAPH_PADDING_BOTTOM = 50;
 static const int LABEL_HEIGHT = 15;
 
-static QSize buttonSize(30,14);
-
 void ClickableTextItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
     Q_EMIT objectClicked(this);
@@ -39,19 +37,6 @@ void ClickableTextItem::setEnabled(bool state)
         setDefaultTextColor(QColor(15,68,113, 250));
     else
         setDefaultTextColor(QColor(100,100,100, 200));
-}
-
-void ClickableSwitchItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
-{
-    Q_EMIT objectClicked(this);
-}
-
-void ClickableSwitchItem::setState(bool state)
-{
-    if (state)
-        setPixmap(QIcon(QString::fromStdString(":/icons/button_on_"+iconPrefix)).pixmap(buttonSize));
-    else
-        setPixmap(QIcon(":/icons/button_off").pixmap(buttonSize));
 }
 
 MempoolStats::MempoolStats(QWidget *parent) :
@@ -98,6 +83,7 @@ void MempoolStats::drawChart()
     if (!isVisible())
         return;
 
+    QGraphicsProxyWidget *proxyW;
     if (!titleItem)
     {
         // create labels (only once)
@@ -105,30 +91,31 @@ void MempoolStats::drawChart()
         titleItem->setFont(QFont(LABEL_FONT, LABEL_TITLE_SIZE, QFont::Light));
         titleLine = scene->addLine(0,0,100,100);
         titleLine->setPen(QPen(QColor(100,100,100, 200), 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        dynMemUsageSwitch = new ClickableSwitchItem();
-        scene->addItem(dynMemUsageSwitch);
-        dynMemUsageSwitch->iconPrefix = "blue";
-        connect(dynMemUsageSwitch, SIGNAL(objectClicked(QGraphicsItem*)), this, SLOT(objectClicked(QGraphicsItem*)));
-        dynMemUsageItem = scene->addText(tr("Dynamic Memory Usage"));
-        dynMemUsageItem->setFont(QFont(LABEL_FONT, LABEL_KV_SIZE, QFont::Light));
+        
+        
+        QCheckBox *cb0 = new QCheckBox("Dynamic Memory Usage");
+        cb0->setStyleSheet("background-color: rgb(255,255,255);");
+        dynMemUsageSwitch = scene->addWidget(cb0);
+        connect(cb0, &QCheckBox::stateChanged, [cb0, this](){ drawDynMemUsage = cb0->isChecked(); drawChart(); });
+        cb0->setFont(QFont(LABEL_FONT, LABEL_KV_SIZE, QFont::Light));
         dynMemUsageValueItem = scene->addText("N/A");
         dynMemUsageValueItem->setFont(QFont(LABEL_FONT, LABEL_KV_SIZE, QFont::Bold));
 
-        txCountSwitch = new ClickableSwitchItem();
+        QCheckBox *cb1 = new QCheckBox("Amount of Transactions");
+        cb1->setStyleSheet("background-color: rgb(255,255,255);");
+        txCountSwitch = scene->addWidget(cb1);
         scene->addItem(txCountSwitch);
-        txCountSwitch->iconPrefix = "red";
-        connect(txCountSwitch, SIGNAL(objectClicked(QGraphicsItem*)), this, SLOT(objectClicked(QGraphicsItem*)));
-        txCountItem = scene->addText("Amount of Transactions");
-        txCountItem->setFont(QFont(LABEL_FONT, LABEL_KV_SIZE, QFont::Light));
+        connect(cb1, &QCheckBox::stateChanged, [cb1, this](){ drawTxCount = cb1->isChecked(); drawChart(); });
+        cb1->setFont(QFont(LABEL_FONT, LABEL_KV_SIZE, QFont::Light));
         txCountValueItem = scene->addText("N/A");
         txCountValueItem->setFont(QFont(LABEL_FONT, LABEL_KV_SIZE, QFont::Bold));
 
-        minFeeSwitch = new ClickableSwitchItem();
-        minFeeSwitch->iconPrefix = "green";
+        QCheckBox *cb2 = new QCheckBox("MinRelayFee per KB");
+        cb2->setStyleSheet("background-color: rgb(255,255,255);");
+        minFeeSwitch = scene->addWidget(cb2);
         scene->addItem(minFeeSwitch);
-        connect(minFeeSwitch, SIGNAL(objectClicked(QGraphicsItem*)), this, SLOT(objectClicked(QGraphicsItem*)));
-        minFeeItem = scene->addText(tr("MinRelayFee per KB"));
-        minFeeItem->setFont(QFont(LABEL_FONT, LABEL_KV_SIZE, QFont::Light));
+        connect(cb2, &QCheckBox::stateChanged, [cb2, this](){ drawMinFee = cb2->isChecked(); drawChart(); });
+        cb2->setFont(QFont(LABEL_FONT, LABEL_KV_SIZE, QFont::Light));
         minFeeValueItem = scene->addText(tr("N/A"));
         minFeeValueItem->setFont(QFont(LABEL_FONT, LABEL_KV_SIZE, QFont::Bold));
 
@@ -155,9 +142,9 @@ void MempoolStats::drawChart()
     }
 
     // set button states
-    dynMemUsageSwitch->setState(drawDynMemUsage);
-    txCountSwitch->setState(drawTxCount);
-    minFeeSwitch->setState(drawMinFee);
+    ((QCheckBox *)dynMemUsageSwitch->widget())->setChecked(drawDynMemUsage);
+    ((QCheckBox *)txCountSwitch->widget())->setChecked(drawTxCount);
+    ((QCheckBox *)minFeeSwitch->widget())->setChecked(drawMinFee);
 
     last10MinLabel->setEnabled((timeFilter == TEN_MINS));
     lastHourLabel->setEnabled((timeFilter == ONE_HOUR));
@@ -194,22 +181,19 @@ void MempoolStats::drawChart()
 
     // set dynamic label positions
     int maxValueSize = std::max(std::max(txCountValueItem->boundingRect().width(), dynMemUsageValueItem->boundingRect().width()), minFeeValueItem->boundingRect().width());
-    maxValueSize = ceil(maxValueSize*0.13)*10; //use size steps of 10dip
+    maxValueSize = ceil(maxValueSize*0.11)*10; //use size steps of 10dip
 
-    int rightPaddingLabels = std::max(std::max(dynMemUsageItem->boundingRect().width(), txCountItem->boundingRect().width()), minFeeItem->boundingRect().width())+maxValueSize;
+    int rightPaddingLabels = std::max(std::max(dynMemUsageSwitch->boundingRect().width(), txCountSwitch->boundingRect().width()), minFeeSwitch->boundingRect().width())+maxValueSize;
     int rightPadding = 10;
-    dynMemUsageItem->setPos(width()-rightPaddingLabels-rightPadding, dynMemUsageItem->pos().y());
-    dynMemUsageSwitch->setPos(dynMemUsageItem->pos().x()-buttonSize.width(), dynMemUsageItem->pos().y()+dynMemUsageSwitch->boundingRect().height()/3.0);
+    dynMemUsageSwitch->setPos(width()-rightPaddingLabels-rightPadding, 5);
+    
+    txCountSwitch->setPos(width()-rightPaddingLabels-rightPadding, dynMemUsageSwitch->pos().y()+dynMemUsageSwitch->boundingRect().height());
+    
+    minFeeSwitch->setPos(width()-rightPaddingLabels-rightPadding, txCountSwitch->pos().y()+txCountSwitch->boundingRect().height());
 
-    txCountItem->setPos(width()-rightPaddingLabels-rightPadding, dynMemUsageItem->pos().y()+dynMemUsageItem->boundingRect().height());
-    txCountSwitch->setPos(txCountItem->pos().x()-buttonSize.width(), txCountItem->pos().y()+txCountSwitch->boundingRect().height()/3.0);
-
-    minFeeItem->setPos(width()-rightPaddingLabels-rightPadding, dynMemUsageItem->pos().y()+dynMemUsageItem->boundingRect().height()+txCountItem->boundingRect().height());
-    minFeeSwitch->setPos(minFeeItem->pos().x()-buttonSize.width(), minFeeItem->pos().y()+minFeeSwitch->boundingRect().height()/3.0);
-
-    dynMemUsageValueItem->setPos(width()-dynMemUsageValueItem->boundingRect().width()-rightPadding, dynMemUsageItem->pos().y());
-    txCountValueItem->setPos(width()-txCountValueItem->boundingRect().width()-rightPadding, txCountItem->pos().y());
-    minFeeValueItem->setPos(width()-minFeeValueItem->boundingRect().width()-rightPadding, minFeeItem->pos().y());
+    dynMemUsageValueItem->setPos(width()-dynMemUsageValueItem->boundingRect().width()-rightPadding, dynMemUsageSwitch->pos().y());
+    txCountValueItem->setPos(width()-txCountValueItem->boundingRect().width()-rightPadding, txCountSwitch->pos().y());
+    minFeeValueItem->setPos(width()-minFeeValueItem->boundingRect().width()-rightPadding, minFeeSwitch->pos().y());
 
     titleItem->setPos(5,minFeeSwitch->pos().y()+minFeeSwitch->boundingRect().height()-titleItem->boundingRect().height()+10);
     titleLine->setLine(10, titleItem->pos().y()+titleItem->boundingRect().height(), width()-10, titleItem->pos().y()+titleItem->boundingRect().height());
@@ -396,15 +380,6 @@ void MempoolStats::showEvent(QShowEvent *event)
 
 void MempoolStats::objectClicked(QGraphicsItem *item)
 {
-    if (item == dynMemUsageSwitch)
-        drawDynMemUsage = !drawDynMemUsage;
-
-    if (item == txCountSwitch)
-        drawTxCount = !drawTxCount;
-
-    if (item == minFeeSwitch)
-        drawMinFee = !drawMinFee;
-
     if (item == last10MinLabel)
         timeFilter = 600;
 
@@ -434,11 +409,8 @@ MempoolStats::~MempoolStats()
         delete titleItem;
         delete titleLine;
         delete noDataItem;
-        delete dynMemUsageItem;
         delete dynMemUsageValueItem;
-        delete txCountItem;
         delete txCountValueItem;
-        delete minFeeItem;
         delete minFeeValueItem;
         delete last10MinLabel;
         delete lastHourLabel;

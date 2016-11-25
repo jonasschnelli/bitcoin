@@ -248,10 +248,6 @@ RES_ICONS = \
   qt/res/icons/bitcoin.ico \
   qt/res/icons/bitcoin_testnet.ico \
   qt/res/icons/bitcoin.png \
-  qt/res/icons/button_off.png \
-  qt/res/icons/button_on_blue.png \
-  qt/res/icons/button_on_green.png \
-  qt/res/icons/button_on_red.png \
   qt/res/icons/chart.png \
   qt/res/icons/chevron.png \
   qt/res/icons/clock1.png \

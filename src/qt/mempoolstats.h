@@ -9,6 +9,8 @@
 #include <QGraphicsLineItem>
 #include <QGraphicsPixmapItem>
 
+#include <QCheckBox>
+#include <QGraphicsProxyWidget>
 
 #include <QEvent>
 
@@ -25,17 +27,6 @@ Q_SIGNALS:
     void objectClicked(QGraphicsItem*);
 };
 
-class ClickableSwitchItem : public QObject, public QGraphicsPixmapItem
-{
-    Q_OBJECT
-public:
-    std::string iconPrefix;
-    void setState(bool state);
-protected:
-    void mousePressEvent(QGraphicsSceneMouseEvent *event);
-Q_SIGNALS:
-    void objectClicked(QGraphicsItem*);
-};
 
 namespace Ui {
     class MempoolStats;
@@ -65,11 +56,8 @@ private:
     QGraphicsLineItem *titleLine;
     QGraphicsTextItem *noDataItem;
 
-    QGraphicsTextItem *dynMemUsageItem;
     QGraphicsTextItem *dynMemUsageValueItem;
-    QGraphicsTextItem *txCountItem;
     QGraphicsTextItem *txCountValueItem;
-    QGraphicsTextItem *minFeeItem;
     QGraphicsTextItem *minFeeValueItem;
 
     ClickableTextItem *last10MinLabel;
@@ -77,9 +65,9 @@ private:
     ClickableTextItem *lastDayLabel;
     ClickableTextItem *allDataLabel;
 
-    ClickableSwitchItem *txCountSwitch;
-    ClickableSwitchItem *minFeeSwitch;
-    ClickableSwitchItem *dynMemUsageSwitch;
+    QGraphicsProxyWidget *txCountSwitch;
+    QGraphicsProxyWidget *minFeeSwitch;
+    QGraphicsProxyWidget *dynMemUsageSwitch;
 
     QGraphicsScene *scene;
     QVector<QGraphicsItem*> redrawItems;
