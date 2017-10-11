@@ -328,8 +328,7 @@ void MempoolStats::drawChart()
     QDateTime drawTime(fromDateTime);
     qint64 secsTotal = fromDateTime.secsTo(toDateTime);
     const qint64 step = secsTotal/amountOfLinesV;
-    const QString timeFmt =
-        (secsTotal < 60 ? "HH:mm:ss" : (secsTotal < (2*24*60*60) ? "HH:mm" : "yyyy/MM/dd"));
+    const QString timeFmt = (secsTotal < amountOfLinesV*60 ? "HH:mm:ss" : (secsTotal < ONE_DAY ? "HH:mm" : "yyyy/MM/dd"));
 
     for (int i=0; i <= amountOfLinesV; i++)
     {
