@@ -87,7 +87,8 @@ public:
     mutable std::atomic<int> cachedBestHeaderHeight;
     mutable std::atomic<int64_t> cachedBestHeaderTime;
 
-    MempoolSamplesVector getMempoolStatsInRange(QDateTime &from, QDateTime &to);
+    MempoolSamplesVector getMempoolStatsInRange(unsigned int precision, QDateTime &from);
+    // , QDateTime &to);
 
 private:
     OptionsModel *optionsModel;

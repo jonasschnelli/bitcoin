@@ -257,15 +257,14 @@ void ClientModel::updateMempoolStats()
     Q_EMIT mempoolStatsDidUpdate();
 }
 
-MempoolSamplesVector ClientModel::getMempoolStatsInRange(QDateTime &from, QDateTime &to)
+MempoolSamplesVector ClientModel::getMempoolStatsInRange(unsigned int precision, QDateTime &from)
 {
     // get stats from the core stats model
     uint64_t timeFrom = from.toTime_t();
-    uint64_t timeTo = to.toTime_t();
 
-    MempoolSamplesVector samples = CStats::DefaultStats()->mempoolGetValuesInRange(timeFrom,timeTo);
+    MempoolSamplesVector samples = CStats::DefaultStats()->mempoolCollector->getSamplesForPrecision(precision, timeFrom);
+
     from.setTime_t(timeFrom);
-    to.setTime_t(timeTo);
     return samples;
 }
 

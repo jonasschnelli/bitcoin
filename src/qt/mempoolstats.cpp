@@ -161,14 +161,7 @@ void MempoolStats::drawChart()
     // get the samples
     QDateTime toDateTime = QDateTime::currentDateTime();
     QDateTime fromDateTime = toDateTime.addSecs(-timeFilter); //-1h
-    if (timeFilter == 0)
-    {
-        // disable filter if timeFilter == 0
-        toDateTime.setTime_t(0);
-        fromDateTime.setTime_t(0);
-    }
-
-    MempoolSamplesVector vSamples = clientModel->getMempoolStatsInRange(fromDateTime, toDateTime);
+    MempoolSamplesVector vSamples = clientModel->getMempoolStatsInRange(0, fromDateTime);
 
     // set the values into the overview labels
     if (vSamples.size())
@@ -220,12 +213,12 @@ void MempoolStats::drawChart()
     qreal maxwidth = ui->graphicsView->size().width()-GRAPH_PADDING_LEFT-GRAPH_PADDING_RIGHT;
     qreal maxheightG = ui->graphicsView->size().height()-GRAPH_PADDING_TOP-GRAPH_PADDING_TOP_LABEL-LABEL_HEIGHT;
     float paddingTopSizeFactor = 1.2;
-    qreal step = maxwidth/(double)vSamples.size();
+    qreal Xstep = maxwidth/(double)vSamples.size();
 
     // make sure we skip samples that would be drawn narrower then 1px
     // larger window can result in drawing more samples
     int samplesStep = 1;
-    if (step < 1)
+    if (Xstep < 1)
         samplesStep = ceil(1/samplesStep);
 
     // find maximum values
@@ -234,7 +227,8 @@ void MempoolStats::drawChart()
     uint64_t maxTxCount = 0;
     uint64_t minTxCount = std::numeric_limits<int64_t>::max();
     int64_t maxMinFee = 0;
-    uint32_t maxTimeDelta = vSamples.back().timeDelta-vSamples.front().timeDelta;
+    uint64_t totalTimeDelta = 0;
+
     for(const struct CStatsMempoolSample &sample : vSamples)
     {
         if (sample.dynMemUsage > maxDynMemUsage)
@@ -251,6 +245,14 @@ void MempoolStats::drawChart()
 
         if (sample.minFeePerK > maxMinFee)
             maxMinFee = sample.minFeePerK;
+
+        totalTimeDelta += sample.timeDelta;
+    }
+    totalTimeDelta -= vSamples.front().timeDelta;
+    if (totalTimeDelta < 1)
+    {
+        noDataItem->setVisible(true);
+        return;
     }
 
     int64_t dynMemUsagelog10Val = pow(10.0f, floor(log10(maxDynMemUsage*paddingTopSizeFactor-minDynMemUsage)));
@@ -267,11 +269,15 @@ void MempoolStats::drawChart()
     QPainterPath minFeePath(QPointF(currentX, bottom));
 
     // draw the three possible paths
+
+    uint64_t firstTime = vSamples.front().timeDelta;
+    uint64_t curTime = 0;
     for (MempoolSamplesVector::iterator it = vSamples.begin(); it != vSamples.end(); it+=samplesStep)
     {
         const struct CStatsMempoolSample &sample = (*it);
-        qreal xPos = maxTimeDelta > 0 ? maxwidth/maxTimeDelta*(sample.timeDelta-vSamples.front().timeDelta) : maxwidth/(double)vSamples.size();
-        if (sample.timeDelta == vSamples.front().timeDelta)
+        curTime += sample.timeDelta;
+        qreal xPos = (maxwidth * (curTime - firstTime) / totalTimeDelta);
+        if (curTime == firstTime)
         {
             dynMemUsagePath.moveTo(GRAPH_PADDING_LEFT+xPos, bottom-maxheightG/(topDynMemUsage-bottomDynMemUsage)*(sample.dynMemUsage-bottomDynMemUsage));
             txCountPath.moveTo(GRAPH_PADDING_LEFT+xPos, bottom-maxheightG/(topTxCount-bottomTxCount)*(sample.txCount-bottomTxCount));
@@ -319,19 +325,20 @@ void MempoolStats::drawChart()
     // draw vertical grid
     int amountOfLinesV = 4;
     QDateTime drawTime(fromDateTime);
-    std::string fromS = fromDateTime.toString().toStdString();
-    // std::string toS = toDateTime.toString().toStdString();
     qint64 secsTotal = fromDateTime.secsTo(toDateTime);
+    const qint64 step = secsTotal/amountOfLinesV;
+    const QString timeFmt =
+        (secsTotal < 60 ? "HH:mm:ss" : (secsTotal < (2*24*60*60) ? "HH:mm" : "yyyy/MM/dd"));
+
     for (int i=0; i <= amountOfLinesV; i++)
     {
         qreal lX = i*(maxwidth/(amountOfLinesV));
         dynMemUsageGridPath.moveTo(GRAPH_PADDING_LEFT+lX, bottom);
         dynMemUsageGridPath.lineTo(GRAPH_PADDING_LEFT+lX, bottom-maxheightG);
 
-        QGraphicsTextItem *item = scene->addText(drawTime.toString("HH:mm"), gridFont);
+        QGraphicsTextItem *item = scene->addText(drawTime.toString(timeFmt), gridFont);
         item->setPos(GRAPH_PADDING_LEFT+lX-(item->boundingRect().width()/2), bottom);
         redrawItems.append(item);
-        qint64 step = secsTotal/amountOfLinesV;
         drawTime = drawTime.addSecs(step);
     }
 
