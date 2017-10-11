@@ -320,7 +320,7 @@ void MempoolStats::drawChart()
     int amountOfLinesV = 4;
     QDateTime drawTime(fromDateTime);
     std::string fromS = fromDateTime.toString().toStdString();
-    std::string toS = toDateTime.toString().toStdString();
+    // std::string toS = toDateTime.toString().toStdString();
     qint64 secsTotal = fromDateTime.secsTo(toDateTime);
     for (int i=0; i <= amountOfLinesV; i++)
     {
