@@ -169,7 +169,7 @@ void MempoolStats::drawChart()
         fromDateTime.setTime_t(0);
     }
 
-    mempoolSamples_t vSamples = clientModel->getMempoolStatsInRange(fromDateTime, toDateTime);
+    MempoolSamplesVector vSamples = clientModel->getMempoolStatsInRange(fromDateTime, toDateTime);
 
     // set the values into the overview labels
     if (vSamples.size())
@@ -268,7 +268,7 @@ void MempoolStats::drawChart()
     QPainterPath minFeePath(QPointF(currentX, bottom));
 
     // draw the three possible paths
-    for (mempoolSamples_t::iterator it = vSamples.begin(); it != vSamples.end(); it+=samplesStep)
+    for (MempoolSamplesVector::iterator it = vSamples.begin(); it != vSamples.end(); it+=samplesStep)
     {
         const struct CStatsMempoolSample &sample = (*it);
         qreal xPos = maxTimeDetla > 0 ? maxwidth/maxTimeDetla*(sample.timeDelta-vSamples.front().timeDelta) : maxwidth/(double)vSamples.size();
