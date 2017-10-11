@@ -156,7 +156,14 @@ void MempoolStats::drawChart()
     // get the samples
     QDateTime toDateTime = QDateTime::currentDateTime();
     QDateTime fromDateTime = toDateTime.addSecs(-timeFilter); //-1h
-    MempoolSamplesVector vSamples = clientModel->getMempoolStatsInRange(0, fromDateTime);
+    unsigned int precision;
+    if (timeFilter == TEN_MINS)
+        precision = 0;
+    else if (timeFilter == ONE_HOUR)
+        precision = 1;
+    else // (timeFilter == ONE_DAY)
+        precision = 2;
+    MempoolSamplesVector vSamples = clientModel->getMempoolStatsInRange(precision, fromDateTime);
 
     // set the values into the overview labels
     if (vSamples.size())
