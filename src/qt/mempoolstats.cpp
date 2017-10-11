@@ -234,7 +234,7 @@ void MempoolStats::drawChart()
     uint64_t maxTxCount = 0;
     uint64_t minTxCount = std::numeric_limits<int64_t>::max();
     int64_t maxMinFee = 0;
-    uint32_t maxTimeDetla = vSamples.back().timeDelta-vSamples.front().timeDelta;
+    uint32_t maxTimeDelta = vSamples.back().timeDelta-vSamples.front().timeDelta;
     for(const struct CStatsMempoolSample &sample : vSamples)
     {
         if (sample.dynMemUsage > maxDynMemUsage)
@@ -270,7 +270,7 @@ void MempoolStats::drawChart()
     for (MempoolSamplesVector::iterator it = vSamples.begin(); it != vSamples.end(); it+=samplesStep)
     {
         const struct CStatsMempoolSample &sample = (*it);
-        qreal xPos = maxTimeDetla > 0 ? maxwidth/maxTimeDetla*(sample.timeDelta-vSamples.front().timeDelta) : maxwidth/(double)vSamples.size();
+        qreal xPos = maxTimeDelta > 0 ? maxwidth/maxTimeDelta*(sample.timeDelta-vSamples.front().timeDelta) : maxwidth/(double)vSamples.size();
         if (sample.timeDelta == vSamples.front().timeDelta)
         {
             dynMemUsagePath.moveTo(GRAPH_PADDING_LEFT+xPos, bottom-maxheightG/(topDynMemUsage-bottomDynMemUsage)*(sample.dynMemUsage-bottomDynMemUsage));
