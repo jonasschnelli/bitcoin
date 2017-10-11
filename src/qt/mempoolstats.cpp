@@ -229,10 +229,10 @@ void MempoolStats::drawChart()
         samplesStep = ceil(1/samplesStep);
 
     // find maximum values
-    int64_t maxDynMemUsage = 0;
-    int64_t minDynMemUsage = std::numeric_limits<int64_t>::max();
-    int64_t maxTxCount = 0;
-    int64_t minTxCount = std::numeric_limits<int64_t>::max();
+    uint64_t maxDynMemUsage = 0;
+    uint64_t minDynMemUsage = std::numeric_limits<int64_t>::max();
+    uint64_t maxTxCount = 0;
+    uint64_t minTxCount = std::numeric_limits<int64_t>::max();
     int64_t maxMinFee = 0;
     uint32_t maxTimeDetla = vSamples.back().timeDelta-vSamples.front().timeDelta;
     for(const struct CStatsMempoolSample &sample : vSamples)
