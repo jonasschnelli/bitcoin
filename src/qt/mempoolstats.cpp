@@ -83,7 +83,6 @@ void MempoolStats::drawChart()
     if (!isVisible())
         return;
 
-    QGraphicsProxyWidget *proxyW;
     if (!titleItem)
     {
         // create labels (only once)
