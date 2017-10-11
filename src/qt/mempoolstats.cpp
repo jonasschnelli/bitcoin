@@ -134,10 +134,6 @@ void MempoolStats::drawChart()
         scene->addItem(lastDayLabel);
         connect(lastDayLabel, SIGNAL(objectClicked(QGraphicsItem*)), this, SLOT(objectClicked(QGraphicsItem*)));
         lastDayLabel->setFont(QFont(LABEL_FONT, LABEL_KV_SIZE, QFont::Light));
-        allDataLabel = new ClickableTextItem(); allDataLabel->setPlainText(tr("All Data"));
-        scene->addItem(allDataLabel);
-        connect(allDataLabel, SIGNAL(objectClicked(QGraphicsItem*)), this, SLOT(objectClicked(QGraphicsItem*)));
-        allDataLabel->setFont(QFont(LABEL_FONT, LABEL_KV_SIZE, QFont::Light));
     }
 
     // set button states
@@ -148,7 +144,6 @@ void MempoolStats::drawChart()
     last10MinLabel->setEnabled((timeFilter == TEN_MINS));
     lastHourLabel->setEnabled((timeFilter == ONE_HOUR));
     lastDayLabel->setEnabled((timeFilter == ONE_DAY));
-    allDataLabel->setEnabled((timeFilter == 0));
 
     // remove the items which needs to be redrawn
     for (QGraphicsItem * item : redrawItems)
@@ -195,11 +190,10 @@ void MempoolStats::drawChart()
 
     // set the position of the filter icons
     static const int filterBottomPadding = 30;
-    int totalWidth = last10MinLabel->boundingRect().width()+lastHourLabel->boundingRect().width()+lastDayLabel->boundingRect().width()+allDataLabel->boundingRect().width()+30;
+    int totalWidth = last10MinLabel->boundingRect().width()+lastHourLabel->boundingRect().width()+lastDayLabel->boundingRect().width()+30;
     last10MinLabel->setPos((width()-totalWidth)/2.0,height()-filterBottomPadding);
     lastHourLabel->setPos((width()-totalWidth)/2.0+last10MinLabel->boundingRect().width()+10,height()-filterBottomPadding);
     lastDayLabel->setPos((width()-totalWidth)/2.0+last10MinLabel->boundingRect().width()+lastHourLabel->boundingRect().width()+20,height()-filterBottomPadding);
-    allDataLabel->setPos((width()-totalWidth)/2.0+last10MinLabel->boundingRect().width()+lastHourLabel->boundingRect().width()+lastDayLabel->boundingRect().width()+30,height()-filterBottomPadding);
 
     // don't paint the grind/graph if there are no or only a signle sample
     if (vSamples.size() < 2)
@@ -387,17 +381,14 @@ void MempoolStats::showEvent(QShowEvent *event)
 void MempoolStats::objectClicked(QGraphicsItem *item)
 {
     if (item == last10MinLabel)
-        timeFilter = 600;
+        timeFilter = TEN_MINS;
 
     if (item == lastHourLabel)
-        timeFilter = 3600;
+        timeFilter = ONE_HOUR;
 
     if (item == lastDayLabel)
-        timeFilter = 24*3600;
+        timeFilter = ONE_DAY;
 
-    if (item == allDataLabel)
-        timeFilter = 0;
-    
     drawChart();
 }
 
