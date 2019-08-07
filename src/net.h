@@ -672,12 +672,27 @@ public:
     CNetMessage GetMessage(const CMessageHeader::MessageStartChars& message_start, int64_t time);
 };
 
+/** The TransportSerializer prepares messages for the network transport
+ */
+class TransportSerializer {
+public:
+    // prepare message for transport (insert header, etc.)
+    virtual void prepareForTransport(CSerializedNetMsg& msg, std::vector<unsigned char>& header) = 0;
+    virtual ~TransportSerializer() {}
+};
+
+class V1TransportSerializer  : public TransportSerializer {
+public:
+    void prepareForTransport(CSerializedNetMsg& msg, std::vector<unsigned char>& header);
+};
+
 /** Information about a peer */
 class CNode
 {
     friend class CConnman;
 public:
     std::unique_ptr<TransportDeserializer> m_deserializer;
+    std::unique_ptr<TransportSerializer> m_serializer;
 
     // socket
     std::atomic<ServiceFlags> nServices{NODE_NONE};
