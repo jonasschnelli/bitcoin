@@ -11,6 +11,7 @@
 #include <amount.h>
 #include <bloom.h>
 #include <compat.h>
+#include <crypto/chacha_poly_aead.h>
 #include <crypto/siphash.h>
 #include <hash.h>
 #include <limitedmap.h>
@@ -672,6 +673,52 @@ public:
     CNetMessage GetMessage(const CMessageHeader::MessageStartChars& message_start, int64_t time);
 };
 
+class V2TransportDeserializer : public TransportDeserializer
+{
+private:
+    std::unique_ptr<ChaCha20Poly1305AEAD> m_aead;
+    uint64_t m_aad_seqnr;
+    uint64_t m_payload_seqnr;
+    int m_aad_pos;
+    bool m_in_data;                   // parsing header (false) or data (true)
+    uint32_t m_message_size;
+    CDataStream vRecv;              // received message data
+    unsigned int m_hdr_pos;
+    unsigned int m_data_pos;
+
+    int readHeader(const char *pch, unsigned int nBytes);
+    int readData(const char *pch, unsigned int nBytes);
+public:
+
+    V2TransportDeserializer(const CMessageHeader::MessageStartChars& pchMessageStartIn, const std::vector<unsigned char>& k1, const std::vector<unsigned char>& k2) : m_aead(new ChaCha20Poly1305AEAD(k1.data(), k1.size(), k2.data(), k2.size())), m_aad_seqnr(0), m_payload_seqnr(0), m_aad_pos(0), vRecv(SER_NETWORK, INIT_PROTO_VERSION) {
+        Reset();
+    }
+
+    void Reset() {
+        vRecv.clear();
+        vRecv.resize(3);
+        m_in_data = false;
+        m_hdr_pos = 0;
+        m_message_size = 0;
+        m_data_pos = 0;
+    }
+    bool Complete() const
+    {
+        if (!m_in_data)
+            return false;
+        return (m_message_size+CHACHA20_POLY1305_AEAD_TAG_LEN == m_data_pos);
+    }
+    void SetVersion(int nVersionIn)
+    {
+        vRecv.SetVersion(nVersionIn);
+    }
+    bool OversizedMessageDetected() const {
+        return (m_in_data && m_message_size > MAX_PROTOCOL_MESSAGE_LENGTH);
+    }
+    int Read(const char *pch, unsigned int nBytes);
+    CNetMessage GetMessage(const CMessageHeader::MessageStartChars& message_start, int64_t time);
+};
+
 /** The TransportSerializer prepares messages for the network transport
  */
 class TransportSerializer {
@@ -683,6 +730,20 @@ public:
 
 class V1TransportSerializer  : public TransportSerializer {
 public:
+    void prepareForTransport(CSerializedNetMsg& msg, std::vector<unsigned char>& header);
+};
+
+class V2TransportSerializer  : public TransportSerializer {
+private:
+    std::unique_ptr<ChaCha20Poly1305AEAD> m_aead;
+    uint64_t m_aad_seqnr;
+    uint64_t m_payload_seqnr;
+    int m_aad_pos;
+public:
+    V2TransportSerializer(const std::vector<unsigned char>& k1, const std::vector<unsigned char>& k2) : m_aead(new ChaCha20Poly1305AEAD(k1.data(), k1.size(), k2.data(), k2.size())), m_aad_seqnr(0), m_payload_seqnr(0), m_aad_pos(0) {
+
+    }
+    // prepare for next message
     void prepareForTransport(CSerializedNetMsg& msg, std::vector<unsigned char>& header);
 };
 

@@ -12,6 +12,7 @@
 #include <streams.h>
 #include <net.h>
 #include <netbase.h>
+#include <netmessagemaker.h>
 #include <chainparams.h>
 #include <util/memory.h>
 #include <util/system.h>
@@ -303,5 +304,58 @@ BOOST_AUTO_TEST_CASE(LocalAddress_BasicLifecycle)
     BOOST_CHECK_EQUAL(IsLocal(addr), false);
 }
 
+void message_serialize_deserialize_test(bool v2) {
+    // use 32 times 0x00 as K1, K2
+    std::vector<unsigned char> k1; k1.resize(32, 0);
+    std::vector<unsigned char> k2; k2.resize(32, 0);
+
+    std::vector<CSerializedNetMsg> test_msgs;
+    test_msgs.push_back(CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::VERACK));
+    test_msgs.push_back(CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::VERSION, PROTOCOL_VERSION, (int)NODE_NETWORK, 123, CAddress(CService(), NODE_NONE), CAddress(CService(), NODE_NONE), 123, "foobar", 500000, true));
+    test_msgs.push_back(CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::REJECT, std::string(NetMsgType::BLOCK), '0', "foobar", uint256()));
+    test_msgs.push_back(CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::PING, 123456));
+
+    // construct the serializers
+    std::unique_ptr<TransportSerializer> serializer;
+    std::unique_ptr<TransportDeserializer> deserializer;
+
+    if (v2) {
+        serializer = MakeUnique<V2TransportSerializer>(V2TransportSerializer(k1, k2));
+        deserializer = MakeUnique<V2TransportDeserializer>(V2TransportDeserializer(Params().MessageStart(), k1, k2));
+    }
+    else {
+        serializer = MakeUnique<V1TransportSerializer>(V1TransportSerializer());
+        deserializer = MakeUnique<V1TransportDeserializer>(V1TransportDeserializer(Params().MessageStart(), SER_NETWORK, INIT_PROTO_VERSION));
+    }
+    // run a couple of times through all messages with the same AEAD instance
+    for (unsigned int i=0; i<100;i++) {
+        for(CSerializedNetMsg& msg : test_msgs) {
+            size_t raw_msg_size = msg.data.size();
+
+            std::vector<unsigned char> serialized_header;
+            serializer->prepareForTransport(msg, serialized_header);
+
+            // read two times
+            //  first: read header
+            size_t read_bytes = 0;
+            if (serialized_header.size() > 0) read_bytes += deserializer->Read((const char *)serialized_header.data(), serialized_header.size());
+            //  second: read the encrypted payload (if required)
+            if (msg.data.size() > 0) read_bytes += deserializer->Read((const char *)msg.data.data(), msg.data.size());
+            if (msg.data.size()-read_bytes > 0) read_bytes += deserializer->Read((const char *)msg.data.data()+read_bytes, msg.data.size()-read_bytes);
+            BOOST_CHECK(deserializer->Complete());
+            BOOST_CHECK_EQUAL(read_bytes, msg.data.size()+serialized_header.size());
+            // message must be complete
+            CNetMessage msg_deser = deserializer->GetMessage(Params().MessageStart(), GetTimeMicros());
+            BOOST_CHECK_EQUAL(msg_deser.m_command, msg.command);
+            BOOST_CHECK_EQUAL(raw_msg_size, msg_deser.m_message_size);
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(net_v2)
+{
+    message_serialize_deserialize_test(true);
+    message_serialize_deserialize_test(false);
+}
 
 BOOST_AUTO_TEST_SUITE_END()
