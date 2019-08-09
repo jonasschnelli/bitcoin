@@ -564,7 +564,7 @@ bool CNode::ReceiveMsgBytes(const char *pch, unsigned int nBytes, bool& complete
     nRecvBytes += nBytes;
     while (nBytes > 0) {
         // absorb network data
-        int handled = m_deserializer->Read(pch, nBytes);
+        int handled = m_deserializer->Read(pch, nBytes, nRecvBytes==nBytes);
         if (handled < 0) {
             m_deserializer->Reset();
             return false;
@@ -580,6 +580,42 @@ bool CNode::ReceiveMsgBytes(const char *pch, unsigned int nBytes, bool& complete
         nBytes -= handled;
 
         if (m_deserializer->Complete()) {
+            std::vector<unsigned char> data;
+            if (m_deserializer->ProtocolUpgradeDetected(data)) {
+                m_deserializer->Reset();
+                complete = true;
+                LogPrint(BCLog::NET, "v2 transport protocol encryption handshake detected from peer=%i\n", GetId());
+
+                // generate our handshake emphemeral key
+                if (!m_ecdh_key.IsValid()) {
+                    V2TransportSerializer::generateEmphemeralKey(m_ecdh_key);
+                    CPubKey pubkey = m_ecdh_key.GetPubKey();
+                    assert(pubkey.IsValid());
+                    assert(pubkey[0] == 2);
+                    assert(pubkey.size() == CPubKey::COMPRESSED_PUBLIC_KEY_SIZE);
+                    std::vector<unsigned char> handshake_data;
+                    handshake_data.insert(handshake_data.begin(), pubkey.begin() + 1, pubkey.begin() + 33);
+
+                    // directly send back the raw pubkey so the other party can enable encryption as well
+                    //   bypass the serializer
+                    LOCK(cs_vSend);
+                    nSendSize += handshake_data.size();
+                    vSendMsg.push_back(handshake_data);
+                }
+
+                // at this point, we have the remote key and our key
+                // TODO: perform ECDH
+                // derive the 4 keys
+                CPrivKey k_1_a(32, 0);
+                CPrivKey k_2_a(32, 0);
+                CPrivKey k_1_b(32, 0);
+                CPrivKey k_2_b(32, 0);
+
+                // switch to v2 serializers
+                m_deserializer = MakeUnique<V2TransportDeserializer>(V2TransportDeserializer(Params().MessageStart(), k_1_a, k_2_a));
+                m_serializer  = MakeUnique<V2TransportSerializer>(V2TransportSerializer(k_1_b, k_2_b));
+                continue;
+            }
             // decompose a transport agnostic CNetMessage from the deserializer
             CNetMessage msg = m_deserializer->GetMessage(Params().MessageStart(), nTimeMicros);
 
@@ -627,7 +663,7 @@ int CNode::GetSendVersion() const
     return nSendVersion;
 }
 
-int V1TransportDeserializer::readHeader(const char *pch, unsigned int nBytes)
+int V1TransportDeserializer::readHeader(const char *pch, unsigned int nBytes, bool first_message)
 {
     // copy data to temporary parsing buffer
     unsigned int nRemaining = 24 - nHdrPos;
@@ -640,16 +676,29 @@ int V1TransportDeserializer::readHeader(const char *pch, unsigned int nBytes)
     if (nHdrPos < 24)
         return nCopy;
 
-    // deserialize to CMessageHeader
-    try {
-        hdrbuf >> hdr;
+    if (first_message
+            &&
+            (memcmp(&hdrbuf[0], Params().MessageStart(), CMessageHeader::MESSAGE_START_SIZE) != 0 || memcmp(&hdrbuf[CMessageHeader::MESSAGE_START_SIZE], NetMsgType::VERSION, strlen(NetMsgType::VERSION)) != 0)
+        ) {
+            // could be a possible BIP324 handshake
+            m_v2_handshake = true;
+            vRecv.resize(32);
+            // copy the 24bytes from the header to the data part
+            memcpy(&vRecv[nDataPos], &hdrbuf[0], 24);
+            nDataPos = 24;
     }
-    catch (const std::exception&) {
-        return -1;
+    else {
+        // deserialize to CMessageHeader
+        try {
+            hdrbuf >> hdr;
+        }
+        catch (const std::exception&) {
+            return -1;
+        }
     }
 
     // reject messages larger than MAX_SIZE
-    if (hdr.nMessageSize > MAX_SIZE)
+    if (!m_v2_handshake && hdr.nMessageSize > MAX_SIZE)
         return -1;
 
     // switch state to reading message data
@@ -660,12 +709,13 @@ int V1TransportDeserializer::readHeader(const char *pch, unsigned int nBytes)
 
 int V1TransportDeserializer::readData(const char *pch, unsigned int nBytes)
 {
-    unsigned int nRemaining = hdr.nMessageSize - nDataPos;
+    unsigned int goal_size = m_v2_handshake ? 32 : hdr.nMessageSize;
+    unsigned int nRemaining = goal_size - nDataPos;
     unsigned int nCopy = std::min(nRemaining, nBytes);
 
     if (vRecv.size() < nDataPos + nCopy) {
         // Allocate up to 256 KiB ahead, but never more than the total message size.
-        vRecv.resize(std::min(hdr.nMessageSize, nDataPos + nCopy + 256 * 1024));
+        vRecv.resize(std::min(goal_size, nDataPos + nCopy + 256 * 1024));
     }
 
     hasher.Write((const unsigned char*)pch, nCopy);
@@ -681,6 +731,14 @@ const uint256& V1TransportDeserializer::GetMessageHash() const
     if (data_hash.IsNull())
         hasher.Finalize(data_hash.begin());
     return data_hash;
+}
+
+bool V1TransportDeserializer::ProtocolUpgradeDetected(std::vector<unsigned char>& data) {
+    if (m_v2_handshake) {
+        data.insert(data.begin(), vRecv.begin(), vRecv.end()); //TODO: use a move
+        return true;
+    }
+    return false;
 }
 
 CNetMessage V1TransportDeserializer::GetMessage(const CMessageHeader::MessageStartChars& message_start, int64_t time) {
@@ -712,7 +770,7 @@ CNetMessage V1TransportDeserializer::GetMessage(const CMessageHeader::MessageSta
     return msg;
 }
 
-int V2TransportDeserializer::Read(const char *pch, unsigned int bytes)
+int V2TransportDeserializer::Read(const char *pch, unsigned int bytes, bool first_message)
 {
     if (!m_in_data) {
         // copy data to temporary parsing buffer
@@ -781,6 +839,7 @@ CNetMessage V2TransportDeserializer::GetMessage(const CMessageHeader::MessageSta
     std::string command_name;
 
     if (m_aead->Crypt(m_payload_seqnr, m_aad_seqnr, m_aad_pos, (unsigned char *)vRecv.data(), vRecv.size(), (const uint8_t *)vRecv.data(), vRecv.size(), false)) {
+        printf("hex decrypted: %s\n", HexStr(vRecv.begin(), vRecv.end()).c_str());
         // MAC check was successful
         valid_checksum = true;
 
@@ -971,6 +1030,18 @@ void V2TransportSerializer::prepareForTransport(CSerializedNetMsg& msg, std::vec
         m_time_last_rekey = now;
         m_bytes_encrypted = 0;
     }
+}
+
+void V2TransportSerializer::generateEmphemeralKey(CKey &key) {
+    do {
+        key.MakeNewKey(true);
+        if (key.GetPubKey()[0] == 3) {
+            // the encryption handshake will only use 32byte pubkeys
+            // force EVEN (0x02) pubkey be negating the private key in case of ODD (0x03) pubkeys
+            key.Negate();
+        }
+    } while (memcmp(&key.GetPubKey()[1], Params().MessageStart(), 4) == 0);
+    assert(key.IsValid());
 }
 
 size_t CConnman::SocketSendData(CNode *pnode) const EXCLUSIVE_LOCKS_REQUIRED(pnode->cs_vSend)

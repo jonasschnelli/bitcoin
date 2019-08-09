@@ -307,10 +307,10 @@ BOOST_AUTO_TEST_CASE(LocalAddress_BasicLifecycle)
 
 size_t read_message(std::unique_ptr<TransportDeserializer>& deserializer, const std::vector<unsigned char>& serialized_header, const CSerializedNetMsg& msg) {
     size_t read_bytes = 0;
-    if (serialized_header.size() > 0) read_bytes += deserializer->Read((const char *)serialized_header.data(), serialized_header.size());
+    if (serialized_header.size() > 0) read_bytes += deserializer->Read((const char *)serialized_header.data(), serialized_header.size(), false);
     //  second: read the encrypted payload (if required)
-    if (msg.data.size() > 0) read_bytes += deserializer->Read((const char *)msg.data.data(), msg.data.size());
-    if (msg.data.size() > read_bytes && msg.data.size()-read_bytes > 0) read_bytes += deserializer->Read((const char *)msg.data.data()+read_bytes, msg.data.size()-read_bytes);
+    if (msg.data.size() > 0) read_bytes += deserializer->Read((const char *)msg.data.data(), msg.data.size(), false);
+    if (msg.data.size() > read_bytes && msg.data.size()-read_bytes > 0) read_bytes += deserializer->Read((const char *)msg.data.data()+read_bytes, msg.data.size()-read_bytes, false);
     return read_bytes;
 }
 
@@ -406,5 +406,90 @@ BOOST_AUTO_TEST_CASE(net_rekey)
         BOOST_CHECK(msg_deser.m_valid_header == (i!=76));
     }
 }
+
+
+// hack our way into CNode private members
+struct Node_Hack {
+  typedef std::list<CNetMessage> CNode::*type;
+  friend type get(Node_Hack);
+};
+
+template<typename Tag, typename Tag::type M>
+struct Rob {
+  friend typename Tag::type get(Tag) {
+    return M;
+  }
+};
+
+template struct Rob<Node_Hack, &CNode::vRecvMsg>;
+
+BOOST_AUTO_TEST_CASE(net_v2_handshake)
+{
+    SOCKET hSocket = INVALID_SOCKET;
+    NodeId id = 0;
+    int height = 0;
+
+    in_addr ipv4Addr;
+    ipv4Addr.s_addr = 0xa0b0c001;
+
+    CAddress addr = CAddress(CService(ipv4Addr, 7777), NODE_NETWORK);
+    std::string pszDest;
+    bool fInboundIn = false;
+
+    // create two node instances
+    std::unique_ptr<CNode> pnode1 = MakeUnique<CNode>(id++, NODE_NETWORK, height, hSocket, addr, 0, 0, CAddress(), pszDest, fInboundIn);
+    std::unique_ptr<CNode> pnode2 = MakeUnique<CNode>(id++, NODE_NETWORK, height, hSocket, addr, 1, 1, CAddress(), pszDest, fInboundIn);
+
+    // generate emphemeral key on node1
+    V2TransportSerializer::generateEmphemeralKey(pnode1->m_ecdh_key);
+
+    // fake send handshake from node1 to node2
+    bool complete;
+    pnode2->ReceiveMsgBytes((const char *)pnode1->m_ecdh_key.GetPubKey().data()+1, 32, complete);
+    {
+        // fake sende handshake from node2 to node1
+        LOCK(pnode2->cs_vSend);
+        auto it = pnode2->vSendMsg.begin();
+        const auto &data = *it;
+        pnode1->ReceiveMsgBytes(reinterpret_cast<const char*>(data.data()), data.size(), complete);
+    }
+
+    // handshake done
+    // now send some messages forth and back
+
+    std::vector<CSerializedNetMsg> test_msgs;
+    test_msgs.push_back(CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::VERACK));
+    test_msgs.push_back(CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::VERSION, PROTOCOL_VERSION, (int)NODE_NETWORK, 123, CAddress(CService(), NODE_NONE), CAddress(CService(), NODE_NONE), 123, "foobar", 500000, true));
+    test_msgs.push_back(CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::REJECT, std::string(NetMsgType::BLOCK), '0', "foobar", uint256()));
+    test_msgs.push_back(CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::PING, 123456));
+
+    CNode *n_from = pnode1.get();
+    CNode *n_to = pnode2.get();
+
+    for (unsigned int i=0; i<100;i++) {
+        for(const CSerializedNetMsg& msg_orig : test_msgs) {
+            // bypass the copy protection
+            CSerializedNetMsg msg;
+            msg.data = msg_orig.data;
+            msg.command = msg_orig.command;
+
+            std::vector<unsigned char> serializedHeader;
+
+            // switch from/to
+            n_from = n_from == pnode1.get() ? pnode2.get() : pnode1.get();
+            n_to = n_to == pnode2.get() ? pnode1.get() : pnode2.get();
+
+            n_from->m_serializer->prepareForTransport(msg, serializedHeader);
+            bool suc = n_to->ReceiveMsgBytes(reinterpret_cast<const char*>(msg.data.data()), msg.data.size(), complete);
+            BOOST_CHECK(suc);
+
+            // rob access to private member vRecvMsg
+            std::list<CNetMessage> test = *n_to.*get(Node_Hack());
+            BOOST_CHECK_EQUAL(HexStr(test.back().m_recv.begin(), test.back().m_recv.end()), HexStr(msg_orig.data.begin(), msg_orig.data.end()));
+            BOOST_CHECK_EQUAL(test.back().m_command, msg_orig.command);
+        }
+    }
+}
+
 
 BOOST_AUTO_TEST_SUITE_END()
