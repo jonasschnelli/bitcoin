@@ -201,3 +201,120 @@ const std::vector<std::string> &getAllNetMessageTypes()
 {
     return allNetMessageTypesVec;
 }
+
+
+uint8_t GetShortCommandIDFromCommand(const std::string cmd) {
+    if (cmd == NetMsgType::ADDR) {
+        return NetMsgType::ADDR_SHORT_ID;
+    } else if (cmd == NetMsgType::BLOCK) {
+        return NetMsgType::BLOCK_SHORT_ID;
+    } else if (cmd == NetMsgType::BLOCKTXN) {
+        return NetMsgType::BLOCKTXN_SHORT_ID;
+    } else if (cmd == NetMsgType::CMPCTBLOCK) {
+       return NetMsgType::CMPCTBLOCK_SHORT_ID;;
+    } else if (cmd == NetMsgType::FEEFILTER) {
+        return NetMsgType::FEEFILTER_SHORT_ID;
+    } else if (cmd == NetMsgType::FILTERADD) {
+        return NetMsgType::FILTERADD_SHORT_ID;
+    } else if (cmd == NetMsgType::FILTERCLEAR) {
+       return NetMsgType::FILTERCLEAR_SHORT_ID;;
+    } else if (cmd == NetMsgType::FILTERLOAD) {
+        return NetMsgType::FILTERLOAD_SHORT_ID;
+    } else if (cmd == NetMsgType::GETADDR) {
+        return NetMsgType::GETADDR_SHORT_ID;
+    } else if (cmd == NetMsgType::GETBLOCKS) {
+       return NetMsgType::GETBLOCKS_SHORT_ID;;
+    } else if (cmd == NetMsgType::GETBLOCKTXN) {
+        return NetMsgType::GETBLOCKTXN_SHORT_ID;
+    } else if (cmd == NetMsgType::GETDATA) {
+        return NetMsgType::GETDATA_SHORT_ID;
+    } else if (cmd == NetMsgType::GETHEADERS) {
+       return NetMsgType::GETHEADERS_SHORT_ID;;
+    } else if (cmd == NetMsgType::HEADERS) {
+        return NetMsgType::HEADERS_SHORT_ID;
+    } else if (cmd == NetMsgType::INV) {
+        return NetMsgType::INV_SHORT_ID;
+    } else if (cmd == NetMsgType::MEMPOOL) {
+       return NetMsgType::MEMPOOL_SHORT_ID;;
+    } else if (cmd == NetMsgType::MERKLEBLOCK) {
+        return NetMsgType::MERKLEBLOCK_SHORT_ID;
+    } else if (cmd == NetMsgType::NOTFOUND) {
+        return NetMsgType::NOTFOUND_SHORT_ID;
+    } else if (cmd == NetMsgType::PING) {
+       return NetMsgType::PING_SHORT_ID;;
+    } else if (cmd == NetMsgType::PONG) {
+        return NetMsgType::PONG_SHORT_ID;
+    } else if (cmd == NetMsgType::REJECT) {
+        return NetMsgType::REJECT_SHORT_ID;
+    } else if (cmd == NetMsgType::SENDCMPCT) {
+       return NetMsgType::SENDCMPCT_SHORT_ID;;
+    } else if (cmd == NetMsgType::SENDHEADERS) {
+       return NetMsgType::SENDHEADERS_SHORT_ID;;
+    } else if (cmd == NetMsgType::TX) {
+        return NetMsgType::TX_SHORT_ID;
+    } else if (cmd == NetMsgType::VERACK) {
+        return NetMsgType::VERACK_SHORT_ID;
+    } else if (cmd == NetMsgType::VERSION) {
+       return NetMsgType::VERSION_SHORT_ID;;
+    }
+    return 0; //no short command
+}
+
+bool GetCommandFromShortCommandID(uint8_t shortID, std::string& cmd) {
+    if (shortID == NetMsgType::ADDR_SHORT_ID) {
+        cmd = NetMsgType::ADDR;
+    } else if (shortID == NetMsgType::BLOCK_SHORT_ID) {
+        cmd = NetMsgType::BLOCK;
+    } else if (shortID == NetMsgType::BLOCKTXN_SHORT_ID) {
+        cmd = NetMsgType::BLOCKTXN;
+    } else if (shortID == NetMsgType::CMPCTBLOCK_SHORT_ID) {
+       cmd = NetMsgType::CMPCTBLOCK;
+    } else if (shortID == NetMsgType::FEEFILTER_SHORT_ID) {
+        cmd = NetMsgType::FEEFILTER;
+    } else if (shortID == NetMsgType::FILTERADD_SHORT_ID) {
+        cmd = NetMsgType::FILTERADD;
+    } else if (shortID == NetMsgType::FILTERCLEAR_SHORT_ID) {
+       cmd = NetMsgType::FILTERCLEAR;
+    } else if (shortID == NetMsgType::FILTERLOAD_SHORT_ID) {
+        cmd = NetMsgType::FILTERLOAD;
+    } else if (shortID == NetMsgType::GETADDR_SHORT_ID) {
+        cmd = NetMsgType::GETADDR;
+    } else if (shortID == NetMsgType::GETBLOCKS_SHORT_ID) {
+       cmd = NetMsgType::GETBLOCKS;
+    } else if (shortID == NetMsgType::GETBLOCKTXN_SHORT_ID) {
+        cmd = NetMsgType::GETBLOCKTXN;
+    } else if (shortID == NetMsgType::GETDATA_SHORT_ID) {
+        cmd = NetMsgType::GETDATA;
+    } else if (shortID == NetMsgType::GETHEADERS_SHORT_ID) {
+       cmd = NetMsgType::GETHEADERS;
+    } else if (shortID == NetMsgType::HEADERS_SHORT_ID) {
+        cmd = NetMsgType::HEADERS;
+    } else if (shortID == NetMsgType::INV_SHORT_ID) {
+        cmd = NetMsgType::INV;
+    } else if (shortID == NetMsgType::MEMPOOL_SHORT_ID) {
+       cmd = NetMsgType::MEMPOOL;
+    } else if (shortID == NetMsgType::MERKLEBLOCK_SHORT_ID) {
+        cmd = NetMsgType::MERKLEBLOCK;
+    } else if (shortID == NetMsgType::NOTFOUND_SHORT_ID) {
+        cmd = NetMsgType::NOTFOUND;
+    } else if (shortID == NetMsgType::PING_SHORT_ID) {
+       cmd = NetMsgType::PING;
+    } else if (shortID == NetMsgType::PONG_SHORT_ID) {
+       cmd = NetMsgType::PONG;
+    } else if (shortID == NetMsgType::REJECT_SHORT_ID) {
+        cmd = NetMsgType::REJECT;
+    } else if (shortID == NetMsgType::SENDCMPCT_SHORT_ID) {
+        cmd = NetMsgType::SENDCMPCT;
+    } else if (shortID == NetMsgType::SENDHEADERS_SHORT_ID) {
+       cmd = NetMsgType::SENDHEADERS;
+    } else if (shortID == NetMsgType::TX_SHORT_ID) {
+        cmd = NetMsgType::TX;
+    } else if (shortID == NetMsgType::VERACK_SHORT_ID) {
+        cmd = NetMsgType::VERACK;
+    } else if (shortID == NetMsgType::VERSION_SHORT_ID) {
+       cmd = NetMsgType::VERSION;
+    } else {
+        return false; //ID not found
+    }
+    return true;
+}

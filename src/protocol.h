@@ -72,29 +72,34 @@ namespace NetMsgType {
  * @see https://bitcoin.org/en/developer-reference#version
  */
 extern const char *VERSION;
+const uint8_t VERSION_SHORT_ID=38;
 /**
  * The verack message acknowledges a previously-received version message,
  * informing the connecting node that it can begin to send other messages.
  * @see https://bitcoin.org/en/developer-reference#verack
  */
 extern const char *VERACK;
+const uint8_t VERACK_SHORT_ID=37;
 /**
  * The addr (IP address) message relays connection information for peers on the
  * network.
  * @see https://bitcoin.org/en/developer-reference#addr
  */
 extern const char *ADDR;
+const uint8_t ADDR_SHORT_ID=13;
 /**
  * The inv message (inventory message) transmits one or more inventories of
  * objects known to the transmitting peer.
  * @see https://bitcoin.org/en/developer-reference#inv
  */
 extern const char *INV;
+const uint8_t INV_SHORT_ID=27;
 /**
  * The getdata message requests one or more data objects from another node.
  * @see https://bitcoin.org/en/developer-reference#getdata
  */
 extern const char *GETDATA;
+const uint8_t GETDATA_SHORT_ID=24;
 /**
  * The merkleblock message is a reply to a getdata message which requested a
  * block using the inventory type MSG_MERKLEBLOCK.
@@ -102,12 +107,14 @@ extern const char *GETDATA;
  * @see https://bitcoin.org/en/developer-reference#merkleblock
  */
 extern const char *MERKLEBLOCK;
+const uint8_t MERKLEBLOCK_SHORT_ID=29;
 /**
  * The getblocks message requests an inv message that provides block header
  * hashes starting from a particular point in the block chain.
  * @see https://bitcoin.org/en/developer-reference#getblocks
  */
 extern const char *GETBLOCKS;
+const uint8_t GETBLOCKS_SHORT_ID=22;
 /**
  * The getheaders message requests a headers message that provides block
  * headers starting from a particular point in the block chain.
@@ -115,11 +122,13 @@ extern const char *GETBLOCKS;
  * @see https://bitcoin.org/en/developer-reference#getheaders
  */
 extern const char *GETHEADERS;
+const uint8_t GETHEADERS_SHORT_ID=25;
 /**
  * The tx message transmits a single transaction.
  * @see https://bitcoin.org/en/developer-reference#tx
  */
 extern const char *TX;
+const uint8_t TX_SHORT_ID=36;
 /**
  * The headers message sends one or more block headers to a node which
  * previously requested certain headers with a getheaders message.
@@ -127,17 +136,20 @@ extern const char *TX;
  * @see https://bitcoin.org/en/developer-reference#headers
  */
 extern const char *HEADERS;
+const uint8_t HEADERS_SHORT_ID=26;
 /**
  * The block message transmits a single serialized block.
  * @see https://bitcoin.org/en/developer-reference#block
  */
 extern const char *BLOCK;
+const uint8_t BLOCK_SHORT_ID=14;
 /**
  * The getaddr message requests an addr message from the receiving node,
  * preferably one with lots of IP addresses of other receiving nodes.
  * @see https://bitcoin.org/en/developer-reference#getaddr
  */
 extern const char *GETADDR;
+const uint8_t GETADDR_SHORT_ID=21;
 /**
  * The mempool message requests the TXIDs of transactions that the receiving
  * node has verified as valid but which have not yet appeared in a block.
@@ -145,12 +157,14 @@ extern const char *GETADDR;
  * @see https://bitcoin.org/en/developer-reference#mempool
  */
 extern const char *MEMPOOL;
+const uint8_t MEMPOOL_SHORT_ID=28;
 /**
  * The ping message is sent periodically to help confirm that the receiving
  * peer is still connected.
  * @see https://bitcoin.org/en/developer-reference#ping
  */
 extern const char *PING;
+const uint8_t PING_SHORT_ID=31;
 /**
  * The pong message replies to a ping message, proving to the pinging node that
  * the ponging node is still alive.
@@ -158,6 +172,7 @@ extern const char *PING;
  * @see https://bitcoin.org/en/developer-reference#pong
  */
 extern const char *PONG;
+const uint8_t PONG_SHORT_ID=32;
 /**
  * The notfound message is a reply to a getdata message which requested an
  * object the receiving node does not have available for relay.
@@ -165,6 +180,7 @@ extern const char *PONG;
  * @see https://bitcoin.org/en/developer-reference#notfound
  */
 extern const char *NOTFOUND;
+const uint8_t NOTFOUND_SHORT_ID=30;
 /**
  * The filterload message tells the receiving peer to filter all relayed
  * transactions and requested merkle blocks through the provided filter.
@@ -174,6 +190,7 @@ extern const char *NOTFOUND;
  * @see https://bitcoin.org/en/developer-reference#filterload
  */
 extern const char *FILTERLOAD;
+const uint8_t FILTERLOAD_SHORT_ID=20;
 /**
  * The filteradd message tells the receiving peer to add a single element to a
  * previously-set bloom filter, such as a new public key.
@@ -183,6 +200,7 @@ extern const char *FILTERLOAD;
  * @see https://bitcoin.org/en/developer-reference#filteradd
  */
 extern const char *FILTERADD;
+const uint8_t FILTERADD_SHORT_ID=18;
 /**
  * The filterclear message tells the receiving peer to remove a previously-set
  * bloom filter.
@@ -192,6 +210,7 @@ extern const char *FILTERADD;
  * @see https://bitcoin.org/en/developer-reference#filterclear
  */
 extern const char *FILTERCLEAR;
+const uint8_t FILTERCLEAR_SHORT_ID=19;
 /**
  * The reject message informs the receiving node that one of its previous
  * messages has been rejected.
@@ -199,6 +218,7 @@ extern const char *FILTERCLEAR;
  * @see https://bitcoin.org/en/developer-reference#reject
  */
 extern const char *REJECT;
+const uint8_t REJECT_SHORT_ID=33;
 /**
  * Indicates that a node prefers to receive new block announcements via a
  * "headers" message rather than an "inv".
@@ -206,12 +226,14 @@ extern const char *REJECT;
  * @see https://bitcoin.org/en/developer-reference#sendheaders
  */
 extern const char *SENDHEADERS;
+const uint8_t SENDHEADERS_SHORT_ID=35;
 /**
  * The feefilter message tells the receiving peer not to inv us any txs
  * which do not meet the specified min fee rate.
  * @since protocol version 70013 as described by BIP133
  */
 extern const char *FEEFILTER;
+const uint8_t FEEFILTER_SHORT_ID=17;
 /**
  * Contains a 1-byte bool and 8-byte LE version number.
  * Indicates that a node is willing to provide blocks via "cmpctblock" messages.
@@ -220,28 +242,43 @@ extern const char *FEEFILTER;
  * @since protocol version 70014 as described by BIP 152
  */
 extern const char *SENDCMPCT;
+const uint8_t SENDCMPCT_SHORT_ID=34;
 /**
  * Contains a CBlockHeaderAndShortTxIDs object - providing a header and
  * list of "short txids".
  * @since protocol version 70014 as described by BIP 152
  */
 extern const char *CMPCTBLOCK;
+const uint8_t CMPCTBLOCK_SHORT_ID=16;
 /**
  * Contains a BlockTransactionsRequest
  * Peer should respond with "blocktxn" message.
  * @since protocol version 70014 as described by BIP 152
  */
 extern const char *GETBLOCKTXN;
+const uint8_t GETBLOCKTXN_SHORT_ID=23;
 /**
  * Contains a BlockTransactions.
  * Sent in response to a "getblocktxn" message.
  * @since protocol version 70014 as described by BIP 152
  */
 extern const char *BLOCKTXN;
+const uint8_t BLOCKTXN_SHORT_ID=15;
 };
 
 /* Get a vector of all valid message types (see above) */
 const std::vector<std::string> &getAllNetMessageTypes();
+
+// Short Command IDs are a low bandwidth representations of a message type
+// The mapping is a peer to peer agreement
+
+// returns the short command ID for a command
+// returns 0 of no short command ID has been found
+uint8_t GetShortCommandIDFromCommand(const std::string cmd);
+
+// returns the command (string) from a short command ID
+// returns an empty string if short command ID has not been found
+bool GetCommandFromShortCommandID(uint8_t shortID, std::string& cmd);
 
 /** nServices flags */
 enum ServiceFlags : uint64_t {
