@@ -683,10 +683,24 @@ public:
     CNetMessage GetMessage(const CMessageHeader::MessageStartChars& message_start, int64_t time);
 };
 
+// ChaCha20 must never reuse a {key, nonce} for encryption nor may it be
+// used to encrypt more than 2^70 bytes under the same {key, nonce}
+// Re-key after 1GB (RFC4253 / SSH recommendation) or after 1h
+static constexpr unsigned int REKEY_LIMIT_BYTES = (1024 * 1024 * 1024);
+static constexpr unsigned int REKEY_LIMIT_TIME = 3600;
+static constexpr unsigned int ABORT_LIMIT_BYTES = REKEY_LIMIT_BYTES * 1.1; // abort after ~10% tolerance buffer
+static constexpr unsigned int ABORT_LIMIT_TIME = REKEY_LIMIT_BYTES * 1.1;  // abort after ~10% tolerance buffer
+static constexpr unsigned int MIN_REKEY_TIME = 10;                         // minimal rekey time to avoid DOS
+
 class V2TransportDeserializer : public TransportDeserializer
 {
 private:
     std::unique_ptr<ChaCha20Poly1305AEAD> m_aead;
+    CPrivKey m_aead_k1;             //keep the keys for later rekeying
+    CPrivKey m_aead_k2;
+    uint64_t m_bytes_decrypted;     // counter of bytes decrypted under the same key
+    int64_t m_time_last_rekey;
+    uint256 m_session_id;           // the encryption session_id, relevant for rekeying
     uint64_t m_payload_seqnr;       // sequence number for the payload
     uint64_t m_aad_seqnr;           // sequence number for the packet length (AD)
     int m_aad_pos;                  // position in the aad keystream
@@ -695,12 +709,13 @@ private:
     CDataStream vRecv;              // received message data
     unsigned int m_hdr_pos;         // read pos in header
     unsigned int m_data_pos;        // read pos in data
+    bool m_rekey_flag;              // rekey in message detected
 
     int readHeader(const char *pch, unsigned int nBytes);
     int readData(const char *pch, unsigned int nBytes);
 public:
 
-    V2TransportDeserializer(const CMessageHeader::MessageStartChars& pchMessageStartIn, const CPrivKey& k1, const CPrivKey& k2) : m_aead(new ChaCha20Poly1305AEAD(k1.data(), k1.size(), k2.data(), k2.size())), m_payload_seqnr(0), m_aad_seqnr(0), m_aad_pos(0), vRecv(SER_NETWORK, INIT_PROTO_VERSION) {
+    V2TransportDeserializer(const CMessageHeader::MessageStartChars& pchMessageStartIn, const CPrivKey& k1, const CPrivKey& k2, const uint256& session_id) : m_aead(new ChaCha20Poly1305AEAD(k1.data(), k1.size(), k2.data(), k2.size())), m_aead_k1(k1), m_aead_k2(k2), m_bytes_decrypted(0), m_time_last_rekey(GetTime()), m_session_id(session_id), m_payload_seqnr(0), m_aad_seqnr(0), m_aad_pos(0), vRecv(SER_NETWORK, INIT_PROTO_VERSION) {
         Reset();
     }
 
@@ -711,6 +726,7 @@ public:
         m_hdr_pos = 0;
         m_message_size = 0;
         m_data_pos = 0;
+        m_rekey_flag = false;
     }
     bool Complete() const
     {
@@ -746,13 +762,16 @@ public:
 class V2TransportSerializer  : public TransportSerializer {
 private:
     std::unique_ptr<ChaCha20Poly1305AEAD> m_aead;
-    CPrivKey m_aead_k1; //keep the keys for later rekeying
+    CPrivKey m_aead_k1;   //keep the keys for later rekeying
     CPrivKey m_aead_k2;
+    uint64_t m_bytes_encrypted; //counter of bytes encrypted with same key
+    int64_t m_time_last_rekey;
+    uint256 m_session_id; // the encryption session_id, relevant for rekeying
     uint64_t m_payload_seqnr;
     uint64_t m_aad_seqnr;
     int m_aad_pos;
 public:
-    V2TransportSerializer(const CPrivKey& k1, const CPrivKey& k2) : m_aead(new ChaCha20Poly1305AEAD(k1.data(), k1.size(), k2.data(), k2.size())), m_aead_k1(k1), m_aead_k2(k2), m_payload_seqnr(0), m_aad_seqnr(0), m_aad_pos(0) {
+    V2TransportSerializer(const CPrivKey& k1, const CPrivKey& k2, const uint256 session_id) : m_aead(new ChaCha20Poly1305AEAD(k1.data(), k1.size(), k2.data(), k2.size())), m_aead_k1(k1), m_aead_k2(k2), m_bytes_encrypted(0), m_time_last_rekey(GetTime()), m_session_id(session_id), m_payload_seqnr(0), m_aad_seqnr(0), m_aad_pos(0) {
 
     }
     // prepare for next message

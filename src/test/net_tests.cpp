@@ -305,18 +305,28 @@ BOOST_AUTO_TEST_CASE(LocalAddress_BasicLifecycle)
     BOOST_CHECK_EQUAL(IsLocal(addr), false);
 }
 
-void message_serialize_deserialize_test(bool v2, const std::vector<CSerializedNetMsg>& test_msgs) {
-    // use 32 bytey keys with all zeros
-    CPrivKey k1(32, 0);
-    CPrivKey k2(32, 0);
+size_t read_message(std::unique_ptr<TransportDeserializer>& deserializer, const std::vector<unsigned char>& serialized_header, const CSerializedNetMsg& msg) {
+    size_t read_bytes = 0;
+    if (serialized_header.size() > 0) read_bytes += deserializer->Read((const char *)serialized_header.data(), serialized_header.size());
+    //  second: read the encrypted payload (if required)
+    if (msg.data.size() > 0) read_bytes += deserializer->Read((const char *)msg.data.data(), msg.data.size());
+    if (msg.data.size() > read_bytes && msg.data.size()-read_bytes > 0) read_bytes += deserializer->Read((const char *)msg.data.data()+read_bytes, msg.data.size()-read_bytes);
+    return read_bytes;
+}
 
+// use 32 bytey keys with all zeros
+static const CPrivKey k1(32, 0);
+static const CPrivKey k2(32, 0);
+static const uint256 session_id;
+
+void message_serialize_deserialize_test(bool v2, const std::vector<CSerializedNetMsg>& test_msgs) {
     // construct the serializers
     std::unique_ptr<TransportSerializer> serializer;
     std::unique_ptr<TransportDeserializer> deserializer;
 
     if (v2) {
-        serializer = MakeUnique<V2TransportSerializer>(V2TransportSerializer(k1, k2));
-        deserializer = MakeUnique<V2TransportDeserializer>(V2TransportDeserializer(Params().MessageStart(), k1, k2));
+        serializer = MakeUnique<V2TransportSerializer>(V2TransportSerializer(k1, k2, session_id));
+        deserializer = MakeUnique<V2TransportDeserializer>(V2TransportDeserializer(Params().MessageStart(), k1, k2, session_id));
     }
     else {
         serializer = MakeUnique<V1TransportSerializer>(V1TransportSerializer());
@@ -335,12 +345,7 @@ void message_serialize_deserialize_test(bool v2, const std::vector<CSerializedNe
             serializer->prepareForTransport(msg, serialized_header);
 
             // read two times
-            //  first: read header
-            size_t read_bytes = 0;
-            if (serialized_header.size() > 0) read_bytes += deserializer->Read((const char *)serialized_header.data(), serialized_header.size());
-            //  second: read the encrypted payload (if required)
-            if (msg.data.size() > 0) read_bytes += deserializer->Read((const char *)msg.data.data(), msg.data.size());
-            if (msg.data.size() > read_bytes && msg.data.size()-read_bytes > 0) read_bytes += deserializer->Read((const char *)msg.data.data()+read_bytes, msg.data.size()-read_bytes);
+            size_t read_bytes = read_message(deserializer, serialized_header, msg);
             BOOST_CHECK(deserializer->Complete());
             BOOST_CHECK_EQUAL(read_bytes, msg.data.size()+serialized_header.size());
             // message must be complete
@@ -353,6 +358,9 @@ void message_serialize_deserialize_test(bool v2, const std::vector<CSerializedNe
 
 BOOST_AUTO_TEST_CASE(net_v2)
 {
+    // make sure we use the fast rekey rules
+    gArgs.SoftSetBoolArg("-netencryptionfastrekey", true);
+
     // create some messages where we perform serialization and deserialization
     std::vector<CSerializedNetMsg> test_msgs;
     test_msgs.push_back(CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::VERACK));
@@ -365,7 +373,7 @@ BOOST_AUTO_TEST_CASE(net_v2)
     for (unsigned int i=0;i<1000;i++) { vInv.push_back(CInv(MSG_BLOCK, Params().GenesisBlock().GetHash())); }
     test_msgs.push_back(CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::INV, vInv));
 
-    // large dummy message
+    // add a dummy message
     std::string dummy;
     for (unsigned int i=0;i<100;i++) { dummy += "020000000001013107ca31e1950a9b44b75ce3e8f30127e4d823ed8add1263a1cc8adcc8e49164000000001716001487835ecf51ea0351ef266d216a7e7a3e74b84b4efeffffff02082268590000000017a9144a94391b99e672b03f56d3f60800ef28bc304c4f8700ca9a3b0000000017a9146d5df9e79f752e3c53fc468db89cafda4f7d00cb87024730440220677de5b11a5617d541ba06a1fa5921ab6b4509f8028b23f18ab8c01c5eb1fcfb02202fe382e6e87653f60ff157aeb3a18fc888736720f27ced546b0b77431edabdb0012102608c772598e9645933a86bcd662a3b939e02fb3e77966c9713db5648d5ba8a0006010000"; }
     test_msgs.push_back(CNetMsgMaker(INIT_PROTO_VERSION).Make("foobar", dummy));
@@ -374,6 +382,29 @@ BOOST_AUTO_TEST_CASE(net_v2)
     message_serialize_deserialize_test(false, test_msgs);
 }
 
+BOOST_AUTO_TEST_CASE(net_rekey)
+{
+    CSerializedNetMsg test_msg = CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::VERSION, PROTOCOL_VERSION, (int)NODE_NETWORK, 123, CAddress(CService(), NODE_NONE), CAddress(CService(), NODE_NONE), 123, "foobar", 500000, true);
 
+    // make sure we use the fast rekey rules
+    std::unique_ptr<TransportSerializer> serializer = MakeUnique<V2TransportSerializer>(V2TransportSerializer(k1, k2, session_id));;
+    std::unique_ptr<TransportDeserializer> deserializer = MakeUnique<V2TransportDeserializer>(V2TransportDeserializer(Params().MessageStart(), k1, k2, session_id));
+
+    for (unsigned int i=0; i<=76;i++) {
+        // encrypt the message without the fast-rekey rules
+        gArgs.ForceSetArg("-netencryptionfastrekey", "0");
+        std::vector<unsigned char> serialized_header;
+        serializer->prepareForTransport(test_msg, serialized_header);
+
+        // decrypt the message with the fast rekey-rules
+        gArgs.ForceSetArg("-netencryptionfastrekey", "1");
+        read_message(deserializer, serialized_header, test_msg);
+        CNetMessage msg_deser = deserializer->GetMessage(Params().MessageStart(), GetTimeMicros());
+
+        // make sure we detect the failed rekey
+        // the 76. message (32kb) must have violated the fast rekey limits
+        BOOST_CHECK(msg_deser.m_valid_header == (i!=76));
+    }
+}
 
 BOOST_AUTO_TEST_SUITE_END()
