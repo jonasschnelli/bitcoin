@@ -14,6 +14,7 @@
 #include <clientversion.h>
 #include <consensus/consensus.h>
 #include <crypto/common.h>
+#include <crypto/hkdf_sha256_32.h>
 #include <crypto/sha256.h>
 #include <netbase.h>
 #include <net_permissions.h>
@@ -582,12 +583,18 @@ bool CNode::ReceiveMsgBytes(const char *pch, unsigned int nBytes, bool& complete
         if (m_deserializer->Complete()) {
             std::vector<unsigned char> data;
             if (m_deserializer->ProtocolUpgradeDetected(data)) {
+                if (data.size() != 32) {
+                    // invalid handshake data
+                    return false;
+                }
                 m_deserializer->Reset();
                 complete = true;
                 LogPrint(BCLog::NET, "v2 transport protocol encryption handshake detected from peer=%i\n", GetId());
 
                 // generate our handshake emphemeral key
+                bool encryption_initiator = true;
                 if (!m_ecdh_key.IsValid()) {
+                    encryption_initiator = false;
                     V2TransportSerializer::generateEmphemeralKey(m_ecdh_key);
                     CPubKey pubkey = m_ecdh_key.GetPubKey();
                     assert(pubkey.IsValid());
@@ -603,17 +610,47 @@ bool CNode::ReceiveMsgBytes(const char *pch, unsigned int nBytes, bool& complete
                     vSendMsg.push_back(handshake_data);
                 }
 
-                // at this point, we have the remote key and our key
-                // TODO: perform ECDH
-                // derive the 4 keys
+                // construct the even pubkey
+                CPubKey remote_emphemeral_pubkey;
+                data.insert(data.begin(), 2);
+                remote_emphemeral_pubkey.Set(data.begin(), data.end());
+                if (!remote_emphemeral_pubkey.IsFullyValid()) {
+                    LogPrint(BCLog::NET, "Invalid encryption handshake pubkey received from peer=%i\n", GetId());
+                    return false;
+                }
+
+                // perform ECDH
+                CPrivKey raw_ecdh_secret;
+                if (!m_ecdh_key.ComputeECDHSecret(remote_emphemeral_pubkey, raw_ecdh_secret)) {
+                    LogPrint(BCLog::NET, "Could not compute ECDH shared secret, peer=%i\n", GetId());
+                    return false;
+                }
+                assert(raw_ecdh_secret.size() == 32);
+
                 CPrivKey k_1_a(32, 0);
                 CPrivKey k_2_a(32, 0);
                 CPrivKey k_1_b(32, 0);
                 CPrivKey k_2_b(32, 0);
+                uint256 session_id;
+
+                // derive the keys for the aead
+                CHKDF_HMAC_SHA256_L32 hkdf_32(raw_ecdh_secret.data(), 32, "BitcoinSharedSecret");
+                hkdf_32.Expand32("BitcoinK_1_A", k_1_a.data());
+                hkdf_32.Expand32("BitcoinK_2_A", k_2_a.data());
+                hkdf_32.Expand32("BitcoinK_1_B", k_1_b.data());
+                hkdf_32.Expand32("BitcoinK_2_B", k_2_b.data());
+                hkdf_32.Expand32("BitcoinSessionID", session_id.begin());
 
                 // switch to v2 serializers
-                m_deserializer = MakeUnique<V2TransportDeserializer>(V2TransportDeserializer(Params().MessageStart(), k_1_a, k_2_a));
-                m_serializer  = MakeUnique<V2TransportSerializer>(V2TransportSerializer(k_1_b, k_2_b));
+                if (encryption_initiator) {
+                    m_deserializer = MakeUnique<V2TransportDeserializer>(V2TransportDeserializer(Params().MessageStart(), k_1_b, k_2_b, session_id));
+                    m_serializer  = MakeUnique<V2TransportSerializer>(V2TransportSerializer(k_1_a, k_2_a, session_id));
+                } else {
+                    m_deserializer = MakeUnique<V2TransportDeserializer>(V2TransportDeserializer(Params().MessageStart(), k_1_a, k_2_a, session_id));
+                    m_serializer  = MakeUnique<V2TransportSerializer>(V2TransportSerializer(k_1_b, k_2_b, session_id));
+                }
+
+                LogPrint(BCLog::NET, "Enabling p2p encryption with session %s, peer=%i\n", session_id.GetHex(), GetId());
                 continue;
             }
             // decompose a transport agnostic CNetMessage from the deserializer
@@ -839,7 +876,6 @@ CNetMessage V2TransportDeserializer::GetMessage(const CMessageHeader::MessageSta
     std::string command_name;
 
     if (m_aead->Crypt(m_payload_seqnr, m_aad_seqnr, m_aad_pos, (unsigned char *)vRecv.data(), vRecv.size(), (const uint8_t *)vRecv.data(), vRecv.size(), false)) {
-        printf("hex decrypted: %s\n", HexStr(vRecv.begin(), vRecv.end()).c_str());
         // MAC check was successful
         valid_checksum = true;
 
