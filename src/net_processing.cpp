@@ -771,8 +771,16 @@ void PeerLogicValidation::InitializeNode(CNode *pnode) {
         LOCK(cs_main);
         mapNodeState.emplace_hint(mapNodeState.end(), std::piecewise_construct, std::forward_as_tuple(nodeid), std::forward_as_tuple(addr, std::move(addrName), pnode->fInbound, pnode->m_manual_connection));
     }
-    if(!pnode->fInbound)
-        PushNodeVersion(pnode, connman, GetTime());
+    if(!pnode->fInbound) {
+        if (pnode->addr.nServices & NODE_V2) {
+            // V2 protocol, send handshake
+            V2TransportSerializer::generateEmphemeralKey(pnode->m_ecdh_key);
+            connman->PushHandshake(pnode, pnode->m_ecdh_key.GetPubKey());
+        } else {
+            // V1 protocol, send version as first message
+            PushNodeVersion(pnode, connman, GetTime());
+        }
+    }
 }
 
 void PeerLogicValidation::FinalizeNode(NodeId nodeid, bool& fUpdateConnectionTime) {
@@ -3527,6 +3535,12 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
 {
     const Consensus::Params& consensusParams = Params().GetConsensus();
     {
+        if (pto->m_v2handshake_done_trigger && !pto->fDisconnect) {
+            // send the version message after v2 handshake
+            PushNodeVersion(pto, connman, GetTime());
+            pto->m_v2handshake_done_trigger = false;  //latch to false
+        }
+
         // Don't send anything until the version handshake is complete
         if (!pto->fSuccessfullyConnected || pto->fDisconnect)
             return true;

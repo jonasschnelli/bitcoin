@@ -378,7 +378,7 @@ CNode* CConnman::ConnectNode(CAddress addrConnect, const char *pszDest, bool fCo
     if (pszDest) {
         std::vector<CService> resolved;
         if (Lookup(pszDest, resolved,  default_port, fNameLookup && !HaveNameProxy(), 256) && !resolved.empty()) {
-            addrConnect = CAddress(resolved[GetRand(resolved.size())], NODE_NONE);
+            addrConnect = CAddress(resolved[GetRand(resolved.size())],  (ServiceFlags)gArgs.GetArg("-defaultremoteservices", NODE_NONE));
             if (!addrConnect.IsValid()) {
                 LogPrint(BCLog::NET, "Resolver returned invalid address %s for %s\n", addrConnect.ToString(), pszDest);
                 return nullptr;
@@ -645,6 +645,9 @@ bool CNode::ReceiveMsgBytes(const char *pch, unsigned int nBytes, bool& complete
                 if (encryption_initiator) {
                     m_deserializer = MakeUnique<V2TransportDeserializer>(V2TransportDeserializer(Params().MessageStart(), k_1_b, k_2_b, session_id));
                     m_serializer  = MakeUnique<V2TransportSerializer>(V2TransportSerializer(k_1_a, k_2_a, session_id));
+
+                    // if this is outbound, make sure we send a version message
+                    m_v2handshake_done_trigger = true;
                 } else {
                     m_deserializer = MakeUnique<V2TransportDeserializer>(V2TransportDeserializer(Params().MessageStart(), k_1_a, k_2_a, session_id));
                     m_serializer  = MakeUnique<V2TransportSerializer>(V2TransportSerializer(k_1_b, k_2_b, session_id));
@@ -2059,7 +2062,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
             ProcessOneShot();
             for (const std::string& strAddr : connect)
             {
-                CAddress addr(CService(), NODE_NONE);
+                CAddress addr(CService(), (ServiceFlags)gArgs.GetArg("-defaultremoteservices", NODE_NONE));
                 OpenNetworkConnection(addr, false, nullptr, strAddr.c_str(), false, false, true);
                 for (int i = 0; i < 10 && i < nLoop; i++)
                 {
@@ -3071,7 +3074,7 @@ void CConnman::PushMessage(CNode* pnode, CSerializedNetMsg&& msg)
 
         if (pnode->nSendSize > nSendBufferMaxSize)
             pnode->fPauseSend = true;
-        if (serializedHeader) {
+        if (serializedHeader.size()) {
             pnode->vSendMsg.push_back(std::move(serializedHeader));
         }
         if (nMessageSize) {
@@ -3084,6 +3087,25 @@ void CConnman::PushMessage(CNode* pnode, CSerializedNetMsg&& msg)
     }
     if (nBytesSent)
         RecordBytesSent(nBytesSent);
+}
+
+void CConnman::PushHandshake(CNode* pnode, const CPubKey& ecdh_pubkey)
+{
+//    size_t nMessageSize = msg.data.size();
+//    LogPrint(BCLog::NET, "sending %s (%d bytes) peer=%d\n",  SanitizeString(msg.command.c_str()), nMessageSize, pnode->GetId());
+
+//    // make sure we use the appropriate network transport format
+//    std::vector<unsigned char> serializedHeader;
+//    pnode->m_serializer->prepareForTransport(msg, serializedHeader);
+//    size_t nTotalSize = nMessageSize + serializedHeader.size();
+
+    std::vector<unsigned char> handshake_data;
+    handshake_data.insert(handshake_data.begin(), ecdh_pubkey.begin() + 1, ecdh_pubkey.begin() + 33);
+
+    LOCK(pnode->cs_vSend);
+    pnode->nSendSize += 32;
+    pnode->vSendMsg.push_back(std::move(handshake_data));
+    RecordBytesSent(SocketSendData(pnode));
 }
 
 bool CConnman::ForNode(NodeId id, std::function<bool(CNode* pnode)> func)

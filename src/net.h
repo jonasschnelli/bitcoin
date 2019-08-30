@@ -205,6 +205,7 @@ public:
     bool ForNode(NodeId id, std::function<bool(CNode* pnode)> func);
 
     void PushMessage(CNode* pnode, CSerializedNetMsg&& msg);
+    void PushHandshake(CNode* pnode, const CPubKey& ecdh_pubkey);
 
     template<typename Callable>
     void ForEachNode(Callable&& func)
@@ -917,6 +918,8 @@ public:
     std::atomic<int64_t> nMinPingUsecTime{std::numeric_limits<int64_t>::max()};
     // Whether a ping is requested.
     std::atomic<bool> fPingQueued{false};
+    // Set to true when the v2 handshake has been completed
+    std::atomic<bool> m_v2handshake_done_trigger{false};
     // Minimum fee rate with which to filter inv's to this node
     CAmount minFeeFilter GUARDED_BY(cs_feeFilter){0};
     CCriticalSection cs_feeFilter;
