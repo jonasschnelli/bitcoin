@@ -2561,7 +2561,7 @@ bool CChainState::ActivateBestChainStep(CValidationState& state, const CChainPar
     return true;
 }
 
-static bool NotifyHeaderTip() LOCKS_EXCLUDED(cs_main) {
+static bool NotifyHeaderTip(bool* initial_block_download = nullptr) LOCKS_EXCLUDED(cs_main) {
     bool fNotify = false;
     bool fInitialBlockDownload = false;
     static CBlockIndex* pindexHeaderOld = nullptr;
@@ -2573,6 +2573,7 @@ static bool NotifyHeaderTip() LOCKS_EXCLUDED(cs_main) {
         if (pindexHeader != pindexHeaderOld) {
             fNotify = true;
             fInitialBlockDownload = ::ChainstateActive().IsInitialBlockDownload();
+            if (initial_block_download) *initial_block_download = fInitialBlockDownload;
             pindexHeaderOld = pindexHeader;
         }
     }
@@ -3401,9 +3402,9 @@ bool ProcessNewBlockHeaders(const std::vector<CBlockHeader>& headers, CValidatio
             }
         }
     }
-    if (NotifyHeaderTip()) {
-        LOCK(cs_main);
-        if (::ChainstateActive().IsInitialBlockDownload() && ppindex && *ppindex) {
+    bool initial_block_download;
+    if (NotifyHeaderTip(&initial_block_download)) {
+        if (initial_block_download && ppindex && *ppindex) {
             LogPrintf("Synchronizing blockheaders, height: %d (~%.2f%%)\n", (*ppindex)->nHeight, 100.0/((*ppindex)->nHeight+(GetAdjustedTime() - (*ppindex)->GetBlockTime()) / Params().GetConsensus().nPowTargetSpacing) * (*ppindex)->nHeight);
         }
     }
