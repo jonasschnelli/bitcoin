@@ -770,19 +770,30 @@ BOOST_AUTO_TEST_CASE(PoissonNextSend)
     g_mock_deterministic_tests = false;
 }
 
+size_t read_message(std::unique_ptr<TransportDeserializer>& deserializer, const std::vector<unsigned char>& serialized_header, const CSerializedNetMsg& msg)
+{
+    size_t read_bytes = 0;
+    if (serialized_header.size() > 0) read_bytes += deserializer->Read((const char*)serialized_header.data(), serialized_header.size());
+    //  second: read the encrypted payload (if required)
+    if (msg.data.size() > 0) read_bytes += deserializer->Read((const char*)msg.data.data(), msg.data.size());
+    if (msg.data.size() > read_bytes && msg.data.size() - read_bytes > 0) read_bytes += deserializer->Read((const char*)msg.data.data() + read_bytes, msg.data.size() - read_bytes);
+    return read_bytes;
+}
+
+// use 32 byte keys with all zeros
+static const CPrivKey k1(32, 0);
+static const CPrivKey k2(32, 0);
+static const uint256 session_id;
+
 void message_serialize_deserialize_test(bool v2, const std::vector<CSerializedNetMsg>& test_msgs)
 {
-    // use 32 byte keys with all zeros
-    CPrivKey k1(32, 0);
-    CPrivKey k2(32, 0);
-
     // construct the serializers
     std::unique_ptr<TransportSerializer> serializer;
     std::unique_ptr<TransportDeserializer> deserializer;
 
     if (v2) {
-        serializer = MakeUnique<V2TransportSerializer>(V2TransportSerializer(k1, k2));
-        deserializer = MakeUnique<V2TransportDeserializer>(V2TransportDeserializer((NodeId)0, k1, k2));
+        serializer = MakeUnique<V2TransportSerializer>(V2TransportSerializer(k1, k2, session_id));
+        deserializer = MakeUnique<V2TransportDeserializer>(V2TransportDeserializer((NodeId)0, k1, k2, session_id));
     } else {
         serializer = MakeUnique<V1TransportSerializer>(V1TransportSerializer());
         deserializer = MakeUnique<V1TransportDeserializer>(V1TransportDeserializer(Params(), (NodeId)0, SER_NETWORK, INIT_PROTO_VERSION));
@@ -800,12 +811,7 @@ void message_serialize_deserialize_test(bool v2, const std::vector<CSerializedNe
             serializer->prepareForTransport(msg, serialized_header);
 
             // read two times
-            //  first: read header
-            size_t read_bytes = 0;
-            if (serialized_header.size() > 0) read_bytes += deserializer->Read((const char*)serialized_header.data(), serialized_header.size());
-            //  second: read the encrypted payload (if required)
-            if (msg.data.size() > 0) read_bytes += deserializer->Read((const char*)msg.data.data(), msg.data.size());
-            if (msg.data.size() > read_bytes && msg.data.size() - read_bytes > 0) read_bytes += deserializer->Read((const char*)msg.data.data() + read_bytes, msg.data.size() - read_bytes);
+            size_t read_bytes = read_message(deserializer, serialized_header, msg);
             BOOST_CHECK(deserializer->Complete());
             BOOST_CHECK_EQUAL(read_bytes, msg.data.size() + serialized_header.size());
             // message must be complete
@@ -819,6 +825,10 @@ void message_serialize_deserialize_test(bool v2, const std::vector<CSerializedNe
 
 BOOST_AUTO_TEST_CASE(net_v2)
 {
+    // make sure we use the fast rekey rules
+    // Setting the netencryptionfastrekey flag results in using a threshold of 64kb / 10 seconds for requiring a rekey
+    gArgs.SoftSetBoolArg("-netencryptionfastrekey", true);
+
     // create some messages where we perform serialization and deserialization
     std::vector<CSerializedNetMsg> test_msgs;
     test_msgs.push_back(CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::VERACK));
@@ -843,5 +853,84 @@ BOOST_AUTO_TEST_CASE(net_v2)
     message_serialize_deserialize_test(false, test_msgs);
 }
 
+BOOST_AUTO_TEST_CASE(net_rekey)
+{
+    CPrivKey mutable_k1 = k1;
+    CPrivKey mutable_k2 = k2;
+    uint256 mutable_session_id = session_id;
+
+    CSerializedNetMsg test_msg = CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::VERSION, PROTOCOL_VERSION, (int)NODE_NETWORK, 123, CAddress(CService(), NODE_NONE), CAddress(CService(), NODE_NONE), 123, "foobar", 500000, true);
+    CSerializedNetMsg test_msg_short = CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::VERACK);
+
+    // make sure we use the fast rekey rules
+    std::unique_ptr<TransportSerializer> serializer = MakeUnique<V2TransportSerializer>(V2TransportSerializer(k1, k2, session_id));
+    std::unique_ptr<TransportDeserializer> deserializer = MakeUnique<V2TransportDeserializer>(V2TransportDeserializer((NodeId)0, k1, k2, session_id));
+
+    ChaCha20Poly1305AEAD test_decryption_aead(k1.data(), k1.size(), k2.data(), k2.size());
+
+    for (unsigned int i = 0; i <= 76; i++) {
+        // encrypt the message without the fast-rekey rules
+        gArgs.ForceSetArg("-netencryptionfastrekey", "0");
+        std::vector<unsigned char> serialized_header;
+        serializer->prepareForTransport(test_msg, serialized_header);
+
+        // decrypt the message with the fast rekey-rules
+        gArgs.ForceSetArg("-netencryptionfastrekey", "1");
+        read_message(deserializer, serialized_header, test_msg);
+        uint32_t out_err_raw_size{0};
+        Optional<CNetMessage> msg_deser{deserializer->GetMessage(GetTime<std::chrono::microseconds>(), out_err_raw_size)};
+
+        // make sure we detect the failed rekey
+        // the 76th message (32kb) must have violated the fast rekey limits
+        if (i == 76) {
+            BOOST_CHECK(!msg_deser);
+        } else {
+            BOOST_CHECK(msg_deser);
+        }
+    }
+
+    // now make sure we are rekeying by checking against a manual aead instance
+    serializer.reset(new V2TransportSerializer(mutable_k1, mutable_k2, mutable_session_id));
+    deserializer.reset(new V2TransportDeserializer((NodeId)0, mutable_k1, mutable_k2, mutable_session_id));
+    uint32_t aad_seqnr = 0;
+    uint32_t aad_pos = 0;
+    for (unsigned int i = 0; i <= 100; i++) {
+        std::vector<unsigned char> serialized_header;
+        serializer->prepareForTransport(test_msg_short, serialized_header);
+        read_message(deserializer, serialized_header, test_msg_short);
+
+        // manual decrypt the length and check the rekey flag
+        uint32_t testlen = 0;
+        test_decryption_aead.GetLength(&testlen, aad_seqnr, aad_pos, (const uint8_t*)test_msg_short.data.data());
+
+        bool rekey = (testlen & (1U << 23));
+        if (rekey) {
+            testlen &= ~(1U << 23);
+        }
+        BOOST_CHECK(testlen == test_msg_short.data.size() - CHACHA20_POLY1305_AEAD_AAD_LEN - CHACHA20_POLY1305_AEAD_TAG_LEN);
+        uint32_t out_err_raw_size{0};
+        Optional<CNetMessage> msg_deser{deserializer->GetMessage(GetTime<std::chrono::microseconds>(), out_err_raw_size)};
+
+        // increase the position and sequence in the aead instance we use for the check
+        aad_pos += CHACHA20_POLY1305_AEAD_AAD_LEN;
+        if (aad_pos + CHACHA20_POLY1305_AEAD_AAD_LEN > CHACHA20_ROUND_OUTPUT) {
+            aad_pos = 0;
+            aad_seqnr++;
+        }
+
+        if (rekey) {
+            // perform a rekey on the check-instance
+            CHash256().Write(mutable_session_id).Write(mutable_k1).Finalize(mutable_k1);
+            CHash256().Write(mutable_session_id).Write(mutable_k2).Finalize(mutable_k2);
+
+            // reset the AEAD context
+            test_decryption_aead = ChaCha20Poly1305AEAD(mutable_k1.data(), mutable_k1.size(), mutable_k2.data(), mutable_k2.size());
+
+            // reset sequence numbers
+            aad_seqnr = 0;
+            aad_pos = 0;
+        }
+    }
+}
 
 BOOST_AUTO_TEST_SUITE_END()

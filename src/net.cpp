@@ -812,6 +812,15 @@ int V2TransportDeserializer::Read(const char* pch, unsigned int bytes)
             return -1;
         }
 
+        // check and unset rekey bit
+        // the counterparty can signal a post-this-message rekey by setting the
+        // most significant bit in the (unencrypted) length
+        m_rekey_flag = static_cast<bool>(m_message_size & (1U << 23));
+        if (m_rekey_flag) {
+            LogPrint(BCLog::NET, "Rekey flag detected\n");
+            m_message_size &= ~(1U << 23);
+        }
+
         // reject messages larger than MAX_SIZE
         if (m_message_size > MAX_SIZE) {
             return -1;
@@ -853,6 +862,9 @@ Optional<CNetMessage> V2TransportDeserializer::GetMessage(std::chrono::microseco
     if (m_aead->Crypt(m_payload_seqnr, m_aad_seqnr, m_aad_pos, (unsigned char*)vRecv.data(), vRecv.size(), (const uint8_t*)vRecv.data(), vRecv.size(), false)) {
         // MAC check was successful
         valid_checksum = true;
+
+        // count bytes we decrypted including MAC tag + AD
+        m_bytes_decrypted += vRecv.size();
 
         // okay, we could decrypt it, now remove packet length and MAC tag
         assert(vRecv.size() > CHACHA20_POLY1305_AEAD_AAD_LEN + CHACHA20_POLY1305_AEAD_TAG_LEN);
@@ -907,6 +919,37 @@ Optional<CNetMessage> V2TransportDeserializer::GetMessage(std::chrono::microseco
     // store command string, payload size, wire message size
     msg->m_message_size = msg->m_recv.size();                                                                    //message payload size (excluding command)
     msg->m_raw_message_size = CHACHA20_POLY1305_AEAD_AAD_LEN + m_message_size + CHACHA20_POLY1305_AEAD_TAG_LEN; // raw wire size
+
+    const int64_t now = GetTime();
+    if (m_rekey_flag) {
+        if (!gArgs.GetBoolArg("-netencryptionfastrekey", false) && (m_time_last_rekey + MIN_REKEY_TIME > now)) {
+            // remote peer was not respecting the mininal rekey time (DoS)
+            LogPrint(BCLog::NET, "Invalid rekey (DoS) peer=%d\n", m_node_id);
+            Reset();
+            return nullopt;
+        } else {
+            // make sure we rekey at this point, next message is supposed to be encrypted with the new key
+            CHash256().Write(m_session_id).Write(m_aead_k1).Finalize(m_aead_k1);
+            CHash256().Write(m_session_id).Write(m_aead_k2).Finalize(m_aead_k2);
+
+            // reset the AEAD context
+            m_aead.reset(new ChaCha20Poly1305AEAD(m_aead_k1.data(), m_aead_k1.size(), m_aead_k2.data(), m_aead_k2.size()));
+            LogPrint(BCLog::NET, "Rekey: new recv keys (%s, %s)\n", HexStr(m_aead_k1), HexStr(m_aead_k2));
+
+            // reset sequence numbers
+            m_payload_seqnr = 0;
+            m_aad_seqnr = 0;
+            m_aad_pos = 0;
+            m_bytes_decrypted = 0;
+            m_time_last_rekey = now;
+        }
+    } else if (m_bytes_decrypted > REKEY_ABORT_LIMIT_BYTES || now - m_time_last_rekey > REKEY_ABORT_LIMIT_TIME ||
+               (gArgs.GetBoolArg("-netencryptionfastrekey", false) && m_bytes_decrypted > 64 * 1024)) {
+        // don't further decrypt and therefore abort connection when counterparty failed to respect rekey limits
+        LogPrint(BCLog::NET, "Missing rekey detected (Limits) peer=%d\n", m_node_id);
+        Reset();
+        return nullopt;
+    }
 
     // store receive time
     msg->m_time = time;
@@ -967,6 +1010,19 @@ void V2TransportSerializer::prepareForTransport(CSerializedNetMsg& msg, std::vec
     // resize the message buffer to make space for the MAC tag
     msg.data.resize(msg.data.size() + CHACHA20_POLY1305_AEAD_TAG_LEN, 0);
 
+    // length is only allowed up to 2^23 (bit24 is used for indicating rekey)
+    bool bit24 = msg.data[2] & (1u << 7);
+    assert(!bit24);
+
+    // check if we should rekey after this message
+    const int64_t now = GetTime(); //TODO: check how expansive the GetTime call is and if it is avoidable
+    bool rekey = false;
+    if (m_bytes_encrypted >= (gArgs.GetBoolArg("-netencryptionfastrekey", false) ? 32 * 1024 : REKEY_LIMIT_BYTES) || now - m_time_last_rekey >= (gArgs.GetBoolArg("-netencryptionfastrekey", false) ? 10 : REKEY_LIMIT_TIME)) {
+        LogPrint(BCLog::NET, "Rekey limits reached, performing rekey.\n");
+        msg.data[2] |= (1u << 7);
+        rekey = true;
+    }
+
     // encrypt the payload, ignore return code since it can't fail in this case (controlled buffers, don't check the MAC during encrypting)
     m_aead->Crypt(m_payload_seqnr, m_aad_seqnr, m_aad_pos, msg.data.data(), msg.data.size(), msg.data.data(), msg.data.size() - CHACHA20_POLY1305_AEAD_TAG_LEN, true);
 
@@ -978,6 +1034,27 @@ void V2TransportSerializer::prepareForTransport(CSerializedNetMsg& msg, std::vec
     }
     // increase the payload sequence number by 1
     m_payload_seqnr++;
+
+    m_bytes_encrypted += msg.data.size(); // count everything, MAC tag + AD
+
+    if (rekey) {
+        // make sure we rekey at this point, next message needs to be encrypted with the new key
+        CHash256().Write(m_session_id).Write(m_aead_k1).Finalize(m_aead_k1);
+        CHash256().Write(m_session_id).Write(m_aead_k2).Finalize(m_aead_k2);
+
+        // reset the AEAD context
+        m_aead.reset(new ChaCha20Poly1305AEAD(m_aead_k1.data(), m_aead_k1.size(), m_aead_k2.data(), m_aead_k2.size()));
+        LogPrint(BCLog::NET, "Rekey: new send keys (%s, %s)\n", HexStr(m_aead_k1), HexStr(m_aead_k2));
+
+        // reset sequence numbers
+        m_payload_seqnr = 0;
+        m_aad_seqnr = 0;
+        m_aad_pos = 0;
+
+        // reset rekey counters
+        m_time_last_rekey = now;
+        m_bytes_encrypted = 0;
+    }
 }
 
 size_t CConnman::SocketSendData(CNode *pnode) const EXCLUSIVE_LOCKS_REQUIRED(pnode->cs_vSend)
