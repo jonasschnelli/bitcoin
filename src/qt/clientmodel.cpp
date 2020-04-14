@@ -12,6 +12,7 @@
 #include <clientversion.h>
 #include <interfaces/handler.h>
 #include <interfaces/node.h>
+#include <memusage.h>
 #include <net.h>
 #include <netbase.h>
 #include <util/system.h>
@@ -20,6 +21,7 @@
 #include <stdint.h>
 
 #include <QDebug>
+#include <QMutexLocker>
 #include <QThread>
 #include <QTimer>
 
@@ -41,9 +43,30 @@ ClientModel::ClientModel(interfaces::Node& node, OptionsModel *_optionsModel, QO
 
     QTimer* timer = new QTimer;
     timer->setInterval(MODEL_UPDATE_DELAY);
+
     connect(timer, &QTimer::timeout, [this] {
         // no locking required at this point
         // the following calls will acquire the required lock
+        
+        int64_t now = GetTime();
+        if (m_mempool_feehist_last_sample_timestamp == 0 || m_mempool_feehist_last_sample_timestamp+m_mempool_collect_intervall < now) {
+            QMutexLocker locker(&m_mempool_locker);
+            int64_t timestart = GetTimeMicros();
+            printf("feehist timer start %lld\   n", timestart);
+
+            interfaces::mempool_feehistogram fee_histogram = m_node.getMempoolFeeHistogram();
+            m_mempool_feehist.push_back({now, fee_histogram});
+            if (m_mempool_feehist.size() > m_mempool_max_samples) {
+                m_mempool_feehist.erase(m_mempool_feehist.begin(), m_mempool_feehist.begin()+1);
+            }
+
+            size_t memusage_feehist = memusage::DynamicUsage(m_mempool_feehist);
+            printf("feehist timer end, time %lld, mem %lld\n", GetTimeMicros()-timestart, memusage_feehist);
+
+            m_mempool_feehist_last_sample_timestamp = now;
+            Q_EMIT mempoolFeeHistChanged();
+        }
+
         Q_EMIT mempoolSizeChanged(m_node.getMempoolSize(), m_node.getMempoolDynamicUsage());
         Q_EMIT bytesChanged(m_node.getTotalBytesRecv(), m_node.getTotalBytesSent());
     });

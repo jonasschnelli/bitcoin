@@ -366,6 +366,10 @@ void BitcoinGUI::createActions()
     m_mask_values_action->setStatusTip(tr("Mask the values in the Overview tab"));
     m_mask_values_action->setCheckable(true);
 
+    m_show_mempool_stats_action = new QAction(tr("&Mempool Statistics"), this);
+    m_show_mempool_stats_action->setStatusTip(tr("Mempool Statistics"));
+    m_show_mempool_stats_action->setEnabled(true);
+
     connect(quitAction, &QAction::triggered, qApp, QApplication::quit);
     connect(aboutAction, &QAction::triggered, this, &BitcoinGUI::aboutClicked);
     connect(aboutQtAction, &QAction::triggered, qApp, QApplication::aboutQt);
@@ -375,6 +379,7 @@ void BitcoinGUI::createActions()
     connect(openRPCConsoleAction, &QAction::triggered, this, &BitcoinGUI::showDebugWindow);
     // prevents an open debug window from becoming stuck/unusable on client shutdown
     connect(quitAction, &QAction::triggered, rpcConsole, &QWidget::hide);
+    connect(m_show_mempool_stats_action, &QAction::triggered, this, &BitcoinGUI::showMempoolStatsWindow);
 
 #ifdef ENABLE_WALLET
     if(walletFrame)
@@ -535,6 +540,7 @@ void BitcoinGUI::createMenuBar()
     help->addSeparator();
     help->addAction(aboutAction);
     help->addAction(aboutQtAction);
+    help->addAction(m_show_mempool_stats_action);
 }
 
 void BitcoinGUI::createToolBars()
@@ -1394,6 +1400,19 @@ void BitcoinGUI::showModalOverlay()
     if (modalOverlay && (progressBar->isVisible() || modalOverlay->isLayerVisible()))
         modalOverlay->toggleVisibility();
 }
+
+void BitcoinGUI::showMempoolStatsWindow()
+ {
+//     // only build the mempool stats window if its requested
+//     if (!mempoolStats)
+//         mempoolStats = new MempoolStats(this);
+//     if (clientModel)
+//         mempoolStats->setClientModel(clientModel);
+//     mempoolStats->showNormal();
+//     mempoolStats->show();
+//     mempoolStats->raise();
+//     mempoolStats->activateWindow();
+ }
 
 static bool ThreadSafeMessageBox(BitcoinGUI* gui, const bilingual_str& message, const std::string& caption, unsigned int style)
 {
