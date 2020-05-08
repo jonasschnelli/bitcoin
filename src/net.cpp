@@ -859,12 +859,12 @@ Optional<CNetMessage> V2TransportDeserializer::GetMessage(std::chrono::microseco
     bool valid_header = false;
     std::string command_name;
 
+    // count bytes we decrypted including MAC tag + AAD
+    m_bytes_decrypted += vRecv.size();
+
     if (m_aead->Crypt(m_payload_seqnr, m_aad_seqnr, m_aad_pos, (unsigned char*)vRecv.data(), vRecv.size(), (const uint8_t*)vRecv.data(), vRecv.size(), false)) {
         // MAC check was successful
         valid_checksum = true;
-
-        // count bytes we decrypted including MAC tag + AD
-        m_bytes_decrypted += vRecv.size();
 
         // okay, we could decrypt it, now remove packet length and MAC tag
         assert(vRecv.size() > CHACHA20_POLY1305_AEAD_AAD_LEN + CHACHA20_POLY1305_AEAD_TAG_LEN);
