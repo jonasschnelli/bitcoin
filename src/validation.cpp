@@ -17,6 +17,7 @@
 #include <cuckoocache.h>
 #include <flatfile.h>
 #include <hash.h>
+#include <index/blockfilterindex.h>
 #include <index/txindex.h>
 #include <logging.h>
 #include <logging/timer.h>
@@ -2236,17 +2237,28 @@ bool CChainState::FlushStateToDisk(
     {
         bool fFlushForPrune = false;
         bool fDoFullFlush = false;
+
+        // make sure we don't prune below the blockfilterindexes bestblocks
+        // pruning is height-based
+        int index_lowest_blockheight = m_chain.Height();
+        ForEachBlockFilterIndex([&index_lowest_blockheight](BlockFilterIndex& index) {
+            int height = index.GetSummary().best_block_height;
+            if (height < index_lowest_blockheight) {
+                height = index_lowest_blockheight;
+            }
+        });
+
         CoinsCacheSizeState cache_state = GetCoinsCacheSizeState(&m_mempool);
         LOCK(cs_LastBlockFile);
         if (fPruneMode && (fCheckForPruning || nManualPruneHeight > 0) && !fReindex) {
             if (nManualPruneHeight > 0) {
                 LOG_TIME_MILLIS_WITH_CATEGORY("find files to prune (manual)", BCLog::BENCH);
 
-                m_blockman.FindFilesToPruneManual(setFilesToPrune, nManualPruneHeight, m_chain.Height());
+                m_blockman.FindFilesToPruneManual(setFilesToPrune, std::max(nManualPruneHeight, index_lowest_blockheight), m_chain.Height());
             } else {
                 LOG_TIME_MILLIS_WITH_CATEGORY("find files to prune", BCLog::BENCH);
 
-                m_blockman.FindFilesToPrune(setFilesToPrune, chainparams.PruneAfterHeight(), m_chain.Height(), IsInitialBlockDownload());
+                m_blockman.FindFilesToPrune(setFilesToPrune, std::max(chainparams.PruneAfterHeight(), (uint64_t)index_lowest_blockheight), m_chain.Height(), IsInitialBlockDownload());
                 fCheckForPruning = false;
             }
             if (!setFilesToPrune.empty()) {
