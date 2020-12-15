@@ -2284,6 +2284,105 @@ static RPCHelpMan scantxoutset()
     };
 }
 
+
+static RPCHelpMan scanblocks()
+{
+    return RPCHelpMan{"scanblocks",
+                "\nReturn relevant blockhashes for given descriptors.\n",
+                {
+                    {"scanobjects", RPCArg::Type::ARR, RPCArg::Optional::NO, "Array of scan objects.\n"
+            "                                  Every scan object is either a string descriptor or an object:",
+                        {
+                            {"descriptor", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "An output descriptor"},
+                            {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "An object with output descriptor and metadata",
+                                {
+                                    {"desc", RPCArg::Type::STR, RPCArg::Optional::NO, "An output descriptor"},
+                                    {"range", RPCArg::Type::RANGE, /* default */ "1000", "The range of HD chain indexes to explore (either end or [begin,end])"},
+                                },
+                            },
+                        },
+                        "[scanobjects,...]"},
+                    {"start_height", RPCArg::Type::NUM, /*default*/ "0", "height to start to filter from"},
+                    {"filtertype", RPCArg::Type::STR, /*default*/ "basic", "The type name of the filter"}
+                },
+                RPCResult{
+                    RPCResult::Type::ARR, "", "",
+                    {
+                        {RPCResult::Type::STR_HEX, "", "The blockhash"},
+                    }},
+                RPCExamples{
+                    HelpExampleCli("scanblocks", "\"[\"addr(bcrt1q4u4nsgk6ug0sqz7r3rj9tykjxrsl0yy4d0wwte)\"]\" 300000") +
+                    HelpExampleRpc("scanblocks", "\"[\"addr(bcrt1q4u4nsgk6ug0sqz7r3rj9tykjxrsl0yy4d0wwte)\"]\" 300000")
+                },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    const std::string filtertype_name{request.params[2].isNull() ? "basic" : request.params[2].get_str()};
+
+    BlockFilterType filtertype;
+    if (!BlockFilterTypeByName(filtertype_name, filtertype)) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Unknown filtertype");
+    }
+
+    BlockFilterIndex* index = GetBlockFilterIndex(filtertype);
+    if (!index) {
+        throw JSONRPCError(RPC_MISC_ERROR, "Index is not enabled for filtertype " + filtertype_name);
+    }
+
+    // set the start-height
+    const CBlockIndex* block = nullptr;
+    {
+        LOCK(cs_main);
+        block = ::ChainActive().Genesis();
+        if (!request.params[1].isNull()) {
+            block = ::ChainActive()[request.params[1].get_int()];
+            if (!block) {
+                throw JSONRPCError(RPC_MISC_ERROR, "Invalid start_height");
+            }
+        }
+    }
+    CHECK_NONFATAL(block);
+
+    // loop through the scan objects, add scripts to the element_set
+    GCSFilter::ElementSet needle_set;
+    for (const UniValue& scanobject : request.params[0].get_array().getValues()) {
+        FlatSigningProvider provider;
+        std::vector<CScript> scripts = EvalDescriptorStringOrObject(scanobject, provider);
+        for (const CScript& script : scripts) {
+            needle_set.emplace(script.begin(), script.end());
+        }
+    }
+    NodeContext& node = EnsureNodeContext(request.context);
+    UniValue ret(UniValue::VARR);
+    const int amount_per_chunk = 10000;
+    const CBlockIndex* start_index = block;
+    std::vector<BlockFilter> filters;
+    while (block) {
+        node.rpc_interruption_point(); // allow a clean shutdown
+        const CBlockIndex* next = nullptr;
+        {
+            LOCK(cs_main);
+            next = ChainActive().Next(block);
+        }
+        if (start_index->nHeight+amount_per_chunk == block->nHeight || next == nullptr) {
+            LogPrint(BCLog::RPC, "Fetching blockfilters from height %d to height %d.\n", start_index->nHeight, block->nHeight);
+            if (index->LookupFilterRange(start_index->nHeight, block, filters)) {
+                for (const BlockFilter& filter : filters) {
+                    // compare the elements-set with each filter
+                    if (filter.GetFilter().MatchAny(needle_set)) {
+                        ret.push_back(filter.GetBlockHash().GetHex());
+                        LogPrint(BCLog::RPC, "scanblocks: found match in %s\n", filter.GetBlockHash().GetHex());
+                    }
+                }
+            }
+            start_index = block;
+        }
+        block = next;
+    }
+    return ret;
+},
+    };
+}
+
 static RPCHelpMan getblockfilter()
 {
     return RPCHelpMan{"getblockfilter",
@@ -2500,6 +2599,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
     { "blockchain",         "scantxoutset",           &scantxoutset,           {"action", "scanobjects"} },
     { "blockchain",         "getblockfilter",         &getblockfilter,         {"blockhash", "filtertype"} },
+    { "blockchain",         "scanblocks",             &scanblocks,             {"scanobjects", "start_height", "filtertype"} },
 
     /* Not shown in help */
     { "hidden",             "invalidateblock",        &invalidateblock,        {"blockhash"} },
