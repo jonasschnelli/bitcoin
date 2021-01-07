@@ -36,6 +36,12 @@ class scanblocksTest(BitcoinTestFramework):
         # make sure the blockhash is present when using the first mined block as start_height
         assert(blockhash in self.nodes[0].scanblocks(["addr("+addr_1+")"], self.nodes[0].getblockheader(blockhash)['height']))
 
+        # also test the stop height
+        assert(blockhash in self.nodes[0].scanblocks(["addr("+addr_1+")"], self.nodes[0].getblockheader(blockhash)['height'], self.nodes[0].getblockheader(blockhash)['height']))
+
+        # use the stop_height to exclude the relevent block
+        assert(blockhash not in self.nodes[0].scanblocks(["addr("+addr_1+")"], 0, self.nodes[0].getblockheader(blockhash)['height']-1))
+
         # make sure the blockhash is present when using the first mined block as start_height
         assert(blockhash in self.nodes[0].scanblocks([{"desc": "pkh(tpubD6NzVbkrYhZ4WaWSyoBvQwbpLkojyoTZPRsgXELWz3Popb3qkjcJyJUGLnL4qHHoQvao8ESaAstxYSnhyswJ76uZPStJRJCTKvosUCJZL5B/*)", "range": [0,100]}], self.nodes[0].getblockheader(blockhash)['height']))
 
@@ -43,10 +49,14 @@ class scanblocksTest(BitcoinTestFramework):
         assert_raises_rpc_error(-1, "Index is not enabled for filtertype basic", self.nodes[1].scanblocks, ["addr("+addr_1+")"])
 
         # test unknown filtertype
-        assert_raises_rpc_error(-5, "Unknown filtertype", self.nodes[0].scanblocks, ["addr("+addr_1+")"], 0, "extended")
+        assert_raises_rpc_error(-5, "Unknown filtertype", self.nodes[0].scanblocks, ["addr("+addr_1+")"], 0, 10, "extended")
 
         # test invalid start_height
         assert_raises_rpc_error(-1, "Invalid start_height", self.nodes[0].scanblocks, ["addr("+addr_1+")"], 100000000)
+
+        # test invalid stop_height
+        assert_raises_rpc_error(-1, "Invalid stop_height", self.nodes[0].scanblocks, ["addr("+addr_1+")"], 10, 0)
+        assert_raises_rpc_error(-1, "Invalid stop_height", self.nodes[0].scanblocks, ["addr("+addr_1+")"], 10, 100000000)
 
 if __name__ == '__main__':
     scanblocksTest().main()

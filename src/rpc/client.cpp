@@ -79,6 +79,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "deriveaddresses", 1, "range" },
     { "scanblocks", 0, "scanobjects" },
     { "scanblocks", 1, "start_height" },
+    { "scanblocks", 2, "stop_height" },
     { "scantxoutset", 1, "scanobjects" },
     { "addmultisigaddress", 0, "nrequired" },
     { "addmultisigaddress", 1, "keys" },

@@ -2303,6 +2303,7 @@ static RPCHelpMan scanblocks()
                         },
                         "[scanobjects,...]"},
                     {"start_height", RPCArg::Type::NUM, /*default*/ "0", "height to start to filter from"},
+                    {"stop_height", RPCArg::Type::NUM, /*default*/ "<tip>", "height to stop to scan"},
                     {"filtertype", RPCArg::Type::STR, /*default*/ "basic", "The type name of the filter"}
                 },
                 RPCResult{
@@ -2316,7 +2317,7 @@ static RPCHelpMan scanblocks()
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
-    const std::string filtertype_name{request.params[2].isNull() ? "basic" : request.params[2].get_str()};
+    const std::string filtertype_name{request.params[3].isNull() ? "basic" : request.params[3].get_str()};
 
     BlockFilterType filtertype;
     if (!BlockFilterTypeByName(filtertype_name, filtertype)) {
@@ -2330,13 +2331,21 @@ static RPCHelpMan scanblocks()
 
     // set the start-height
     const CBlockIndex* block = nullptr;
+    const CBlockIndex* stop_block = nullptr;
     {
         LOCK(cs_main);
         block = ::ChainActive().Genesis();
+        stop_block = ::ChainActive().Tip();
         if (!request.params[1].isNull()) {
             block = ::ChainActive()[request.params[1].get_int()];
             if (!block) {
                 throw JSONRPCError(RPC_MISC_ERROR, "Invalid start_height");
+            }
+        }
+        if (!request.params[2].isNull()) {
+            stop_block = ::ChainActive()[request.params[2].get_int()];
+            if (!stop_block || stop_block->nHeight < block->nHeight) {
+                throw JSONRPCError(RPC_MISC_ERROR, "Invalid stop_height");
             }
         }
     }
@@ -2362,6 +2371,7 @@ static RPCHelpMan scanblocks()
         {
             LOCK(cs_main);
             next = ChainActive().Next(block);
+            if (block == stop_block) next = nullptr;
         }
         if (start_index->nHeight+amount_per_chunk == block->nHeight || next == nullptr) {
             LogPrint(BCLog::RPC, "Fetching blockfilters from height %d to height %d.\n", start_index->nHeight, block->nHeight);
@@ -2599,7 +2609,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
     { "blockchain",         "scantxoutset",           &scantxoutset,           {"action", "scanobjects"} },
     { "blockchain",         "getblockfilter",         &getblockfilter,         {"blockhash", "filtertype"} },
-    { "blockchain",         "scanblocks",             &scanblocks,             {"scanobjects", "start_height", "filtertype"} },
+    { "blockchain",         "scanblocks",             &scanblocks,             {"scanobjects", "start_height", "stop_height", "filtertype"} },
 
     /* Not shown in help */
     { "hidden",             "invalidateblock",        &invalidateblock,        {"blockhash"} },
